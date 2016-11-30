@@ -6,10 +6,13 @@
 ########################################################################
 # Project setup
 ########################################################################
-cmake_minimum_required(VERSION 2.8)
-project(czmq)
-enable_language(C)
-enable_testing()
+cmake_minimum_required(VERSION 3.2)
+
+include("cmake/HunterGate.cmake")
+HunterGate(
+    URL "https://github.com/ruslo/hunter/archive/v0.16.30.tar.gz"
+    SHA1 "c5b159b48a3a842697f08fe2a72464adfd78a55d"
+)
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
@@ -27,6 +30,12 @@ foreach(which MAJOR MINOR PATCH)
 endforeach(which)
 
 set(CZMQ_VERSION ${CZMQ_MAJOR_VERSION}.${CZMQ_MINOR_VERSION}.${CZMQ_PATCH_VERSION})
+
+project(czmq 
+        VERSION ${CZMQ_VERSION}
+)
+enable_language(C)
+enable_testing()
 
 ########################################################################
 # platform.h
@@ -79,9 +88,15 @@ list(APPEND CMAKE_MODULE_PATH "${SOURCE_DIR}")
 ########################################################################
 # ZMQ dependency
 ########################################################################
+hunter_add_package(ZeroMQ)
 find_package(ZeroMQ REQUIRED)
 include_directories(${ZEROMQ_INCLUDE_DIRS})
 list(APPEND MORE_LIBRARIES ${ZEROMQ_LIBRARIES})
+
+########################################################################
+# Threads dependency
+########################################################################
+find_package(Threads REQUIRED)
 
 ########################################################################
 # includes
@@ -198,10 +213,42 @@ add_library(czmq ${czmq_sources})
 set_target_properties(czmq PROPERTIES DEFINE_SYMBOL "LIBCZMQ_EXPORTS")
 target_link_libraries(czmq ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES})
 
+set(generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+set(config_install_dir "lib/cmake/${PROJECT_NAME}")
+set(include_install_dir "include")
+
+set(version_config "${generated_dir}/${PROJECT_NAME}ConfigVersion.cmake")
+set(project_config "${generated_dir}/${PROJECT_NAME}Config.cmake")
+set(targets_export_name "${PROJECT_NAME}Targets")
+set(namespace "${PROJECT_NAME}::")
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+    "${version_config}" COMPATIBILITY SameMajorVersion
+)
+
+# Note: use 'targets_export_name'
+configure_file("cmake/Config.cmake.in" "${project_config}" @ONLY)
+
+
 install(TARGETS czmq
+    EXPORT "${targets_export_name}"
     LIBRARY DESTINATION "lib${LIB_SUFFIX}" # .so file
     ARCHIVE DESTINATION "lib${LIB_SUFFIX}" # .lib file
     RUNTIME DESTINATION bin              # .dll file
+    INCLUDES DESTINATION "${include_install_dir}"
+)
+
+install(
+    FILES "${project_config}" "${version_config}"
+    DESTINATION "${config_install_dir}"
+)
+
+install(
+    EXPORT "${targets_export_name}"
+    NAMESPACE "${namespace}"
+    DESTINATION "${config_install_dir}"
 )
 
 ########################################################################
@@ -226,7 +273,7 @@ install(
 # tests
 ########################################################################
 add_executable(czmq_selftest "${SOURCE_DIR}/src/czmq_selftest.c")
-target_link_libraries(czmq_selftest czmq ${ZEROMQ_LIBRARIES})
+target_link_libraries(czmq_selftest czmq ${ZEROMQ_LIBRARIES} Threads::Threads)
 add_test(czmq_selftest czmq_selftest)
 
 ########################################################################
