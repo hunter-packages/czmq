@@ -7,15 +7,16 @@
 # Project setup
 ########################################################################
 cmake_minimum_required(VERSION 3.2)
-project(czmq VERSION "4.0.0")
-enable_language(C)
-enable_testing()
 
 include("cmake/HunterGate.cmake")
 HunterGate(
     URL "https://github.com/ruslo/hunter/archive/v0.16.30.tar.gz"
     SHA1 "c5b159b48a3a842697f08fe2a72464adfd78a55d"
 )
+
+project(czmq VERSION "4.0.0")
+enable_language(C)
+enable_testing()
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
