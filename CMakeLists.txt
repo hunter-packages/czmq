@@ -89,9 +89,12 @@ list(APPEND CMAKE_MODULE_PATH "${SOURCE_DIR}")
 # ZMQ dependency
 ########################################################################
 hunter_add_package(ZeroMQ)
-find_package(ZeroMQ REQUIRED)
-include_directories(${ZEROMQ_INCLUDE_DIRS})
-list(APPEND MORE_LIBRARIES ${ZEROMQ_LIBRARIES})
+find_package(ZeroMQ CONFIG REQUIRED)
+if(BUILD_SHARED_LIBS)
+    set(LIBZMQ_TARGET "ZeroMQ::libzmq")
+else()
+    set(LIBZMQ_TARGET "ZeroMQ::libzmq-static")
+endif()
 
 ########################################################################
 # Threads dependency
@@ -206,12 +209,9 @@ set (czmq_sources
     src/zthread.c
 )
 source_group ("Source Files" FILES ${czmq_sources})
-if (NOT DEFINED BUILD_SHARED_LIBS)
-    SET(BUILD_SHARED_LIBS ON)
-endif()
 add_library(czmq ${czmq_sources})
 set_target_properties(czmq PROPERTIES DEFINE_SYMBOL "LIBCZMQ_EXPORTS")
-target_link_libraries(czmq ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES})
+target_link_libraries(czmq ${LIBZMQ_TARGET} ${MORE_LIBRARIES})
 
 set(generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
@@ -273,7 +273,7 @@ install(
 # tests
 ########################################################################
 add_executable(czmq_selftest "${SOURCE_DIR}/src/czmq_selftest.c")
-target_link_libraries(czmq_selftest czmq ${ZEROMQ_LIBRARIES} Threads::Threads)
+target_link_libraries(czmq_selftest czmq ${LIBZMQ_TARGET} Threads::Threads)
 add_test(czmq_selftest czmq_selftest)
 
 ########################################################################
