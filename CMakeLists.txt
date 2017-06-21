@@ -101,38 +101,36 @@ set(OPTIONAL_LIBRARIES)
 # LIBZMQ dependency
 ########################################################################
 hunter_add_package(ZeroMQ)
-find_package(libzmq REQUIRED)
-IF (LIBZMQ_FOUND)
-    include_directories(${LIBZMQ_INCLUDE_DIRS})
-    list(APPEND MORE_LIBRARIES ${LIBZMQ_LIBRARIES})
-    set(pkg_config_libs_private "${pkg_config_libs_private} -lzmq")
-ELSE (LIBZMQ_FOUND)
-    message( FATAL_ERROR "libzmq not found." )
-ENDIF (LIBZMQ_FOUND)
+find_package(ZeroMQ CONFIG REQUIRED)
+if(BUILD_SHARED_LIBS)
+    set(LIBZMQ_TARGET "ZeroMQ::libzmq")
+else()
+    set(LIBZMQ_TARGET "ZeroMQ::libzmq-static")
+endif()
 
 ########################################################################
 # UUID dependency
 ########################################################################
-find_package(uuid)
-IF (UUID_FOUND)
-    include_directories(${UUID_INCLUDE_DIRS})
-    list(APPEND MORE_LIBRARIES ${UUID_LIBRARIES})
-    set(pkg_config_libs_private "${pkg_config_libs_private} -luuid")
-    add_definitions(-DHAVE_UUID)
-    list(APPEND OPTIONAL_LIBRARIES ${UUID_LIBRARIES})
-ENDIF (UUID_FOUND)
+#find_package(uuid CONFIG)
+#IF (UUID_FOUND)
+#    include_directories(${UUID_INCLUDE_DIRS})
+#    list(APPEND MORE_LIBRARIES ${UUID_LIBRARIES})
+#    set(pkg_config_libs_private "${pkg_config_libs_private} -luuid")
+#    add_definitions(-DHAVE_UUID)
+#    list(APPEND OPTIONAL_LIBRARIES ${UUID_LIBRARIES})
+#ENDIF (UUID_FOUND)
 
 ########################################################################
 # SYSTEMD dependency
 ########################################################################
-find_package(systemd)
-IF (SYSTEMD_FOUND)
-    include_directories(${SYSTEMD_INCLUDE_DIRS})
-    list(APPEND MORE_LIBRARIES ${SYSTEMD_LIBRARIES})
-    set(pkg_config_libs_private "${pkg_config_libs_private} -lsystemd")
-    add_definitions(-DHAVE_LIBSYSTEMD)
-    list(APPEND OPTIONAL_LIBRARIES ${SYSTEMD_LIBRARIES})
-ENDIF (SYSTEMD_FOUND)
+#find_package(systemd)
+#IF (SYSTEMD_FOUND)
+#    include_directories(${SYSTEMD_INCLUDE_DIRS})
+#    list(APPEND MORE_LIBRARIES ${SYSTEMD_LIBRARIES})
+#    set(pkg_config_libs_private "${pkg_config_libs_private} -lsystemd")
+#    add_definitions(-DHAVE_LIBSYSTEMD)
+#    list(APPEND OPTIONAL_LIBRARIES ${SYSTEMD_LIBRARIES})
+#ENDIF (SYSTEMD_FOUND)
 
 ########################################################################
 # includes
@@ -240,9 +238,6 @@ IF (ENABLE_DRAFTS)
 ENDIF (ENABLE_DRAFTS)
 
 source_group("Source Files" FILES ${czmq_sources})
-if (NOT DEFINED BUILD_SHARED_LIBS)
-    SET(BUILD_SHARED_LIBS ON)
-endif()
 add_library(czmq ${czmq_sources})
 set_target_properties(czmq
     PROPERTIES DEFINE_SYMBOL "CZMQ_EXPORTS"
@@ -254,7 +249,8 @@ set_target_properties (czmq
     PROPERTIES SOVERSION "4.0.2"
 )
 target_link_libraries(czmq
-    ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES}
+    ${MORE_LIBRARIES}
+    ${LIBZMQ_TARGET}
 )
 
 set(generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -329,7 +325,7 @@ add_executable(
 target_link_libraries(
     zmakecert
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 set_target_properties(
@@ -343,7 +339,7 @@ add_executable(
 target_link_libraries(
     czmq_selftest
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 set_target_properties(
