@@ -6,7 +6,12 @@
 ########################################################################
 # Project setup
 ########################################################################
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 3.0.0)
+include("cmake/HunterGate.cmake")
+HunterGate(
+    URL "https://github.com/ruslo/hunter/archive/v0.20.9.tar.gz"
+    SHA1 "8f7cf6d719d05c49224a4ebeba90c6bb90b90f4a"
+)
 project(czmq)
 enable_language(C)
 enable_testing()
@@ -114,14 +119,20 @@ set(OPTIONAL_LIBRARIES)
 ########################################################################
 # LIBZMQ dependency
 ########################################################################
-find_package(libzmq REQUIRED)
-IF (LIBZMQ_FOUND)
+hunter_add_package(zeromq)
+find_package(zeromq CONFIG REQUIRED)
+if(BUILD_SHARED_LIBS)
+    set(LIBZMQ_SHARED_TARGET "ZeroMQ::libzmq")
+else()
+    set(LIBZMQ_STATIC_TARGET "ZeroMQ::libzmq-static")
+endif()
+IF (zeromq_FOUND)
     include_directories(${LIBZMQ_INCLUDE_DIRS})
     list(APPEND MORE_LIBRARIES ${LIBZMQ_LIBRARIES})
     set(pkg_config_libs_private "${pkg_config_libs_private} -lzmq")
-ELSE (LIBZMQ_FOUND)
+ELSE (zeromq_FOUND)
     message( FATAL_ERROR "libzmq not found." )
-ENDIF (LIBZMQ_FOUND)
+ENDIF (zeromq_FOUND)
 
 ########################################################################
 # UUID dependency
@@ -285,7 +296,7 @@ ENDIF (ENABLE_DRAFTS)
 source_group("Source Files" FILES ${czmq_sources})
 
 
-option(CZMQ_BUILD_SHARED "Whether or not to build the shared object" ON)
+option(CZMQ_BUILD_SHARED "Whether or not to build the shared object" OFF)
 option(CZMQ_BUILD_STATIC "Whether or not to build the static archive" ON)
 
 if (NOT CZMQ_BUILD_SHARED AND NOT CZMQ_BUILD_STATIC)
@@ -318,7 +329,8 @@ if (CZMQ_BUILD_SHARED)
   )
 
   target_link_libraries(czmq
-    ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES}
+    ${MORE_LIBRARIES}
+    ${LIBZMQ_SHARED_TARGET}
   )
 
   install(TARGETS czmq
@@ -348,7 +360,8 @@ if (CZMQ_BUILD_STATIC)
   )
 
   target_link_libraries(czmq-static
-    ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES}
+    ${MORE_LIBRARIES}
+    ${LIBZMQ_STATIC_TARGET}
   )
 
   install(TARGETS czmq-static
@@ -403,7 +416,7 @@ if (TARGET czmq)
 target_link_libraries(
     zmakecert
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_SHARED_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -411,7 +424,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     zmakecert
     czmq-static
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_STATIC_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -426,7 +439,7 @@ if (TARGET czmq)
 target_link_libraries(
     zsp
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_SHARED_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -434,7 +447,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     zsp
     czmq-static
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_STATIC_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -446,7 +459,7 @@ if (TARGET czmq)
 target_link_libraries(
     test_randof
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_SHARED_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -454,7 +467,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     test_randof
     czmq-static
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_STATIC_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -466,7 +479,7 @@ if (TARGET czmq)
 target_link_libraries(
     czmq_selftest
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_SHARED_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -474,7 +487,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     czmq_selftest
     czmq-static
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_STATIC_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
