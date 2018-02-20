@@ -117,7 +117,7 @@ s_reader_destroy (s_reader_t **self_p)
     assert (self_p);
     s_reader_t *self = *self_p;
     if (self) {
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -140,7 +140,7 @@ s_poller_destroy (s_poller_t **self_p)
     assert (self_p);
     s_poller_t *self = *self_p;
     if (self) {
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -166,7 +166,7 @@ s_timer_destroy (s_timer_t **self_p)
     assert (self_p);
     s_timer_t *self = *self_p;
     if (self) {
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -203,7 +203,7 @@ s_ticket_destroy (s_ticket_t **self_p)
     s_ticket_t *self = *self_p;
     if (self) {
         self->tag = 0xDeadBeef;
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -245,15 +245,15 @@ s_rebuild_pollset (zloop_t *self)
 {
     self->poll_size = zlistx_size (self->readers) + zlistx_size (self->pollers);
 
-    free (self->pollset);
+    freen (self->pollset);
     self->pollset = (zmq_pollitem_t *) zmalloc (self->poll_size * sizeof (zmq_pollitem_t));
     assert (self->pollset);
 
-    free (self->readact);
+    freen (self->readact);
     self->readact = (s_reader_t *) zmalloc (self->poll_size * sizeof (s_reader_t));
     assert (self->readact);
 
-    free (self->pollact);
+    freen (self->pollact);
     self->pollact = (s_poller_t *) zmalloc (self->poll_size * sizeof (s_poller_t));
     assert (self->pollact);
 
@@ -365,10 +365,10 @@ zloop_destroy (zloop_t **self_p)
         zlistx_destroy (&self->pollers);
         zlistx_destroy (&self->timers);
         zlistx_destroy (&self->tickets);
-        free (self->pollset);
-        free (self->readact);
-        free (self->pollact);
-        free (self);
+        freen (self->pollset);
+        freen (self->readact);
+        freen (self->pollact);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -678,7 +678,7 @@ void
 zloop_set_nonstop (zloop_t *self, bool nonstop)
 {
     assert (self);
-    self->nonstop = true;
+    self->nonstop = nonstop;
 }
 
 
@@ -765,6 +765,10 @@ zloop_start (zloop_t *self)
             zlistx_delete (self->tickets, ticket->list_handle);
             ticket = (s_ticket_t *) zlistx_last (self->tickets);
         }
+
+        //  Check if timers changed pollset
+        if (self->need_rebuild)
+            continue;
 
         //  Handle any readers and pollers that are ready
         size_t item_nbr;
@@ -880,6 +884,33 @@ s_timer_event3 (zloop_t *loop, int timer_id, void *called)
     return -1;
 }
 
+static int
+s_socket_event1 (zloop_t *loop, zsock_t *reader, void *called)
+{
+    *((bool*) called) = true;
+    //  end the reactor
+    return -1;
+}
+
+static int
+s_timer_event4 (zloop_t *loop, int timer_id, void *arg)
+{
+    //  Just end the looper
+    return -1;
+}
+
+static int
+s_timer_event5 (zloop_t *loop, int timer_id, void *arg)
+{
+    //  remove reader from loop
+    zloop_reader_end(loop, (zsock_t *) arg);
+
+    //  end reactor on next run
+    zloop_timer(loop, 1, 1, s_timer_event4, NULL);
+
+    return 0;
+}
+
 void
 zloop_test (bool verbose)
 {
@@ -941,12 +972,29 @@ zloop_test (bool verbose)
     assert (timer_event_called);
     zsys_interrupted = 0;
 
+    //  Check if reader removed in timer is not called
+    zloop_destroy (&loop);
+    loop = zloop_new ();
+
+    bool socket_event_called = false;
+    zloop_reader (loop, output, s_socket_event1, &socket_event_called);
+    zloop_timer (loop, 0, 1, s_timer_event5, output);
+
+    zstr_send (input, "PING");
+
+    zloop_start (loop);
+    assert (!socket_event_called);
+
     //  cleanup
     zloop_destroy (&loop);
     assert (loop == NULL);
 
     zsock_destroy (&input);
     zsock_destroy (&output);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
     printf ("OK\n");
 }

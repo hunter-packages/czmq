@@ -56,7 +56,7 @@ s_self_destroy (self_t **self_p)
             zsock_unbind (self->handler, ZAP_ENDPOINT);
             zsock_destroy (&self->handler);
         }
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -195,6 +195,7 @@ typedef struct {
     char *password;             //  PLAIN password, in clear text
     char *client_key;           //  CURVE client public key in ASCII
     char *principal;            //  GSSAPI client principal
+    char *user_id;              //  User-Id to return in the ZAP Response
 } zap_request_t;
 
 
@@ -204,17 +205,18 @@ s_zap_request_destroy (zap_request_t **self_p)
     assert (self_p);
     if (*self_p) {
         zap_request_t *self = *self_p;
-        free (self->version);
-        free (self->sequence);
-        free (self->domain);
-        free (self->address);
-        free (self->identity);
-        free (self->mechanism);
-        free (self->username);
-        free (self->password);
-        free (self->client_key);
-        free (self->principal);
-        free (self);
+        freen (self->version);
+        freen (self->sequence);
+        freen (self->domain);
+        freen (self->address);
+        freen (self->identity);
+        freen (self->mechanism);
+        freen (self->username);
+        freen (self->password);
+        freen (self->client_key);
+        freen (self->principal);
+        // self->user_id is a pointer to one of the above fields
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -293,7 +295,7 @@ s_zap_request_reply (zap_request_t *self, char *status_code, char *status_text, 
     assert (rc == 0);
     rc = zmsg_addstr(msg, status_text);
     assert (rc == 0);
-    rc = zmsg_addstr(msg, "");
+    rc = zmsg_addstr(msg, self->user_id ? self->user_id : "");
     assert (rc == 0);
     rc = zmsg_addmem(msg, metadata, metasize);
     assert (rc == 0);
@@ -348,6 +350,7 @@ s_authenticate_plain (self_t *self, zap_request_t *request)
             if (self->verbose)
                 zsys_info ("zauth: - allowed (PLAIN) username=%s password=%s",
                            request->username, request->password);
+            request->user_id = request->username;
             return true;
         }
         else {
@@ -395,6 +398,7 @@ s_authenticate_curve (self_t *self, zap_request_t *request, unsigned char **meta
 
             if (self->verbose)
                 zsys_info ("zauth: - allowed (CURVE) client_key=%s", request->client_key);
+            request->user_id = request->client_key;
             return true;
         }
     }
@@ -410,6 +414,7 @@ s_authenticate_gssapi (self_t *self, zap_request_t *request)
     if (self->verbose)
         zsys_info ("zauth: - allowed (GSSAPI) principal=%s identity=%s",
                    request->principal, request->identity);
+    request->user_id = request->principal;
     return true;
 }
 
@@ -589,9 +594,35 @@ zauth_test (bool verbose)
         printf ("\n");
 
     //  @selftest
+
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
+
+    const char *testbasedir  = ".test_zauth";
+    const char *testpassfile = "password-file";
+    const char *testcertfile = "mycert.txt";
+    char *basedirpath = NULL;   // subdir in a test, under SELFTEST_DIR_RW
+    char *passfilepath = NULL;  // pathname to testfile in a test, in dirpath
+    char *certfilepath = NULL;  // pathname to testfile in a test, in dirpath
+
+    basedirpath = zsys_sprintf ("%s/%s", SELFTEST_DIR_RW, testbasedir);
+    assert (basedirpath);
+    passfilepath = zsys_sprintf ("%s/%s", basedirpath, testpassfile);
+    assert (passfilepath);
+    certfilepath = zsys_sprintf ("%s/%s", basedirpath, testcertfile);
+    assert (certfilepath);
+
+    // Make sure old aborted tests do not hinder us
+    zdir_t *dir = zdir_new (basedirpath, NULL);
+    if (dir) {
+        zdir_remove (dir, true);
+        zdir_destroy (&dir);
+    }
+    zsys_file_delete (passfilepath);
+    zsys_file_delete (certfilepath);
+    zsys_dir_delete  (basedirpath);
+
     //  Create temporary directory for test files
-#   define TESTDIR ".test_zauth"
-    zsys_dir_create (TESTDIR);
+    zsys_dir_create (basedirpath);
 
     //  Check there's no authentication
     zsock_t *server = zsock_new (ZMQ_PULL);
@@ -634,24 +665,38 @@ zauth_test (bool verbose)
     assert (success);
 
     //  Try PLAIN authentication
+    zsock_set_zap_domain (server, "global");
     zsock_set_plain_server (server, 1);
     zsock_set_plain_username (client, "admin");
     zsock_set_plain_password (client, "Password");
     success = s_can_connect (&server, &client, true);
     assert (!success);
 
-    FILE *password = fopen (TESTDIR "/password-file", "w");
+    FILE *password = fopen (passfilepath, "w");
     assert (password);
     fprintf (password, "admin=Password\n");
     fclose (password);
+    zsock_set_zap_domain (server, "global");
     zsock_set_plain_server (server, 1);
     zsock_set_plain_username (client, "admin");
     zsock_set_plain_password (client, "Password");
-    zstr_sendx (auth, "PLAIN", TESTDIR "/password-file", NULL);
+    zstr_sendx (auth, "PLAIN", passfilepath, NULL);
     zsock_wait (auth);
-    success = s_can_connect (&server, &client, true);
+    success = s_can_connect (&server, &client, false);
     assert (success);
 
+#if (ZMQ_VERSION >= ZMQ_MAKE_VERSION (4, 1, 0))
+    // Test that the User-Id metadata is present
+    zframe_t *frame = zframe_recv (server);
+    assert (frame != NULL);
+    const char *user_id = zframe_meta (frame, "User-Id");
+    assert (user_id != NULL);
+    assert (streq (user_id, "admin"));
+    zframe_destroy (&frame);
+#endif
+    s_renew_sockets(&server, &client);
+
+    zsock_set_zap_domain (server, "global");
     zsock_set_plain_server (server, 1);
     zsock_set_plain_username (client, "admin");
     zsock_set_plain_password (client, "Bogus");
@@ -674,6 +719,7 @@ zauth_test (bool verbose)
         zcert_apply (client_cert, client);
         zsock_set_curve_server (server, 1);
         zsock_set_curve_serverkey (client, server_key);
+        zsock_set_zap_domain (server, "global");
         success = s_can_connect (&server, &client, true);
         assert (!success);
 
@@ -693,9 +739,10 @@ zauth_test (bool verbose)
         zcert_apply (client_cert, client);
         zsock_set_curve_server (server, 1);
         zsock_set_curve_serverkey (client, server_key);
-        zcert_save_public (client_cert, TESTDIR "/mycert.txt");
-        zstr_sendx (auth, "CURVE", TESTDIR, NULL);
+        zcert_save_public (client_cert, certfilepath);
+        zstr_sendx (auth, "CURVE", basedirpath, NULL);
         zsock_wait (auth);
+        zsock_set_zap_domain (server, "global");
         success = s_can_connect (&server, &client, false);
         assert (success);
 
@@ -706,6 +753,9 @@ zauth_test (bool verbose)
         const char *meta = zframe_meta (frame, "Hello");
         assert (meta != NULL);
         assert (streq (meta, "World!"));
+        const char *user_id = zframe_meta (frame, "User-Id");
+        assert (user_id != NULL);
+        assert (streq (user_id, zcert_public_txt(client_cert)));
         zframe_destroy (&frame);
         s_renew_sockets(&server, &client);
 #endif
@@ -751,11 +801,21 @@ zauth_test (bool verbose)
     zsock_destroy (&server);
 
     //  Delete all test files
-    zdir_t *dir = zdir_new (TESTDIR, NULL);
+    dir = zdir_new (basedirpath, NULL);
     assert (dir);
     zdir_remove (dir, true);
     zdir_destroy (&dir);
-    //  @end
+
+    zstr_free (&passfilepath);
+    zstr_free (&certfilepath);
+    zstr_free (&basedirpath);
+
 #endif
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
+
+    //  @end
     printf ("OK\n");
 }

@@ -13,6 +13,8 @@
 
 class QmlZactor;
 class QmlZactorAttached;
+class QmlZargs;
+class QmlZargsAttached;
 class QmlZarmour;
 class QmlZarmourAttached;
 class QmlZcert;
@@ -57,6 +59,8 @@ class QmlZsock;
 class QmlZsockAttached;
 class QmlZstr;
 class QmlZstrAttached;
+class QmlZsys;
+class QmlZsysAttached;
 class QmlZtimerset;
 class QmlZtimersetAttached;
 class QmlZtrie;
@@ -65,6 +69,7 @@ class QmlZuuid;
 class QmlZuuidAttached;
 
 #include "QmlZactor.h"
+#include "QmlZargs.h"
 #include "QmlZarmour.h"
 #include "QmlZcert.h"
 #include "QmlZcertstore.h"
@@ -87,6 +92,7 @@ class QmlZuuidAttached;
 #include "QmlZproc.h"
 #include "QmlZsock.h"
 #include "QmlZstr.h"
+#include "QmlZsys.h"
 #include "QmlZtimerset.h"
 #include "QmlZtrie.h"
 #include "QmlZuuid.h"
@@ -95,12 +101,14 @@ class QmlCZMQPlugin : public QQmlExtensionPlugin
 {
     Q_OBJECT
     Q_PLUGIN_METADATA (IID "org.qt-project.Qt.QQmlExtensionInterface")
-    
+
 public:
     void registerTypes (const char *uri)
     {
         qmlRegisterType<QmlZactor> (uri, 1, 0, "QmlZactor");
         qmlRegisterType<QmlZactorAttached>();
+        qmlRegisterType<QmlZargs> (uri, 1, 0, "QmlZargs");
+        qmlRegisterType<QmlZargsAttached>();
         qmlRegisterType<QmlZarmour> (uri, 1, 0, "QmlZarmour");
         qmlRegisterType<QmlZarmourAttached>();
         qmlRegisterType<QmlZcert> (uri, 1, 0, "QmlZcert");
@@ -145,6 +153,8 @@ public:
         qmlRegisterType<QmlZsockAttached>();
         qmlRegisterType<QmlZstr> (uri, 1, 0, "QmlZstr");
         qmlRegisterType<QmlZstrAttached>();
+        qmlRegisterType<QmlZsys> (uri, 1, 0, "QmlZsys");
+        qmlRegisterType<QmlZsysAttached>();
         qmlRegisterType<QmlZtimerset> (uri, 1, 0, "QmlZtimerset");
         qmlRegisterType<QmlZtimersetAttached>();
         qmlRegisterType<QmlZtrie> (uri, 1, 0, "QmlZtrie");

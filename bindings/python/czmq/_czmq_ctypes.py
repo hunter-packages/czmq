@@ -23,19 +23,20 @@ def return_fresh_string(char_p):
 
 # czmq
 lib = None
-try:
-    # check to see if the shared object was embedded locally, attempt to load it
-    # if not, try to load it using the default system paths...
-    # we need to use os.chdir instead of trying to modify $LD_LIBRARY_PATH and reloading the interpreter
-    t = os.getcwd()
-    p = os.path.join(os.path.dirname(__file__), '..')  # find the path to our $project_ctypes.py
-    os.chdir(p)  # change directories briefly
+# check to see if the shared object was embedded locally, attempt to load it
+# if not, try to load it using the default system paths...
+# we need to use os.chdir instead of trying to modify $LD_LIBRARY_PATH and reloading the interpreter
+t = os.getcwd()
+p = os.path.join(os.path.dirname(__file__), '..')  # find the path to our $project_ctypes.py
+os.chdir(p)  # change directories briefly
 
+try:
     from czmq import libczmq                        # attempt to import the shared lib if it exists
     lib = CDLL(libczmq.__file__)             # if it exists try to load the shared lib
-    os.chdir(t)  # switch back to orig dir
 except ImportError:
     pass
+finally:
+    os.chdir(t)  # switch back to orig dir
 
 if not lib:
     try:
@@ -66,6 +67,10 @@ class zmsg_t(Structure):
     pass # Empty - only for type checking
 zmsg_p = POINTER(zmsg_t)
 
+class zargs_t(Structure):
+    pass # Empty - only for type checking
+zargs_p = POINTER(zargs_t)
+
 class zarmour_t(Structure):
     pass # Empty - only for type checking
 zarmour_p = POINTER(zarmour_t)
@@ -89,6 +94,10 @@ zlist_p = POINTER(zlist_t)
 class zcertstore_t(Structure):
     pass # Empty - only for type checking
 zcertstore_p = POINTER(zcertstore_t)
+
+class zlistx_t(Structure):
+    pass # Empty - only for type checking
+zlistx_p = POINTER(zlistx_t)
 
 class FILE(Structure):
     pass # Empty - only for type checking
@@ -130,10 +139,6 @@ class zhashx_t(Structure):
     pass # Empty - only for type checking
 zhashx_p = POINTER(zhashx_t)
 
-class zlistx_t(Structure):
-    pass # Empty - only for type checking
-zlistx_p = POINTER(zlistx_t)
-
 class ziflist_t(Structure):
     pass # Empty - only for type checking
 ziflist_p = POINTER(ziflist_t)
@@ -149,6 +154,10 @@ zmq_pollitem_p = POINTER(zmq_pollitem_t)
 class zpoller_t(Structure):
     pass # Empty - only for type checking
 zpoller_p = POINTER(zpoller_t)
+
+class zproc_t(Structure):
+    pass # Empty - only for type checking
+zproc_p = POINTER(zproc_t)
 
 class va_list_t(Structure):
     pass # Empty - only for type checking
@@ -228,6 +237,7 @@ def coerce_py_file(obj):
 
 # zactor
 zactor_fn = CFUNCTYPE(None, zsock_p, c_void_p)
+zactor_destructor_fn = CFUNCTYPE(None, zactor_p)
 lib.zactor_new.restype = zactor_p
 lib.zactor_new.argtypes = [zactor_fn, c_void_p]
 lib.zactor_destroy.restype = None
@@ -242,6 +252,8 @@ lib.zactor_resolve.restype = c_void_p
 lib.zactor_resolve.argtypes = [c_void_p]
 lib.zactor_sock.restype = zsock_p
 lib.zactor_sock.argtypes = [zactor_p]
+lib.zactor_set_destructor.restype = None
+lib.zactor_set_destructor.argtypes = [zactor_p, zactor_destructor_fn]
 lib.zactor_test.restype = None
 lib.zactor_test.argtypes = [c_bool]
 
@@ -331,12 +343,204 @@ to work with the zsock instance rather than the actor.
         """
         return Zsock(lib.zactor_sock(self._as_parameter_), False)
 
+    def set_destructor(self, destructor):
+        """
+        Change default destructor by custom function. Actor MUST be able to handle new message instead of default $TERM.
+        """
+        return lib.zactor_set_destructor(self._as_parameter_, destructor)
+
     @staticmethod
     def test(verbose):
         """
         Self test of this class.
         """
         return lib.zactor_test(verbose)
+
+
+# zargs
+lib.zargs_new.restype = zargs_p
+lib.zargs_new.argtypes = [c_int, POINTER(c_char_p)]
+lib.zargs_destroy.restype = None
+lib.zargs_destroy.argtypes = [POINTER(zargs_p)]
+lib.zargs_progname.restype = c_char_p
+lib.zargs_progname.argtypes = [zargs_p]
+lib.zargs_arguments.restype = c_size_t
+lib.zargs_arguments.argtypes = [zargs_p]
+lib.zargs_first.restype = c_char_p
+lib.zargs_first.argtypes = [zargs_p]
+lib.zargs_next.restype = c_char_p
+lib.zargs_next.argtypes = [zargs_p]
+lib.zargs_param_first.restype = c_char_p
+lib.zargs_param_first.argtypes = [zargs_p]
+lib.zargs_param_next.restype = c_char_p
+lib.zargs_param_next.argtypes = [zargs_p]
+lib.zargs_param_name.restype = c_char_p
+lib.zargs_param_name.argtypes = [zargs_p]
+lib.zargs_param_lookup.restype = c_char_p
+lib.zargs_param_lookup.argtypes = [zargs_p, c_char_p]
+lib.zargs_param_lookupx.restype = c_char_p
+lib.zargs_param_lookupx.argtypes = [zargs_p, c_char_p]
+lib.zargs_has_help.restype = c_bool
+lib.zargs_has_help.argtypes = [zargs_p]
+lib.zargs_param_empty.restype = c_bool
+lib.zargs_param_empty.argtypes = [c_char_p]
+lib.zargs_print.restype = None
+lib.zargs_print.argtypes = [zargs_p]
+lib.zargs_test.restype = None
+lib.zargs_test.argtypes = [c_bool]
+
+class Zargs(object):
+    """
+    Platform independent command line argument parsing helpers
+
+There are two kind of elements provided by this class
+foo --named-parameter --parameter with_value positional arguments -a gain-parameter
+zargs keeps poision only for arguments, parameters are to be accessed like hash.
+
+It DOES:
+* provide easy to use CLASS compatible API for accessing argv
+* is platform independent
+* provide getopt_long style -- argument, which delimits parameters from arguments
+* makes parameters positon independent
+
+It does NOT
+* change argv
+* provide a "declarative" way to define command line interface
+
+In future it SHALL
+* hide several formats of command line to one (-Idir, --include=dir,
+  --include dir are the same from API pov)
+    """
+
+    allow_destruct = False
+    def __init__(self, *args):
+        """
+        Create a new zargs from command line arguments.
+        """
+        if len(args) == 2 and type(args[0]) is c_void_p and isinstance(args[1], bool):
+            self._as_parameter_ = cast(args[0], zargs_p) # Conversion from raw type to binding
+            self.allow_destruct = args[1] # This is a 'fresh' value, owned by us
+        elif len(args) == 2 and type(args[0]) is zargs_p and isinstance(args[1], bool):
+            self._as_parameter_ = args[0] # Conversion from raw type to binding
+            self.allow_destruct = args[1] # This is a 'fresh' value, owned by us
+        else:
+            assert(len(args) == 2)
+            self._as_parameter_ = lib.zargs_new(args[0], byref(c_char_p.from_param(args[1]))) # Creation of new raw type
+            self.allow_destruct = True
+
+    def __del__(self):
+        """
+        Destroy zargs instance.
+        """
+        if self.allow_destruct:
+            lib.zargs_destroy(byref(self._as_parameter_))
+
+    def __eq__(self, other):
+        if type(other) == type(self):
+            return other.c_address() == self.c_address()
+        elif type(other) == c_void_p:
+            return other.value == self.c_address()
+
+    def c_address(self):
+        """
+        Return the address of the object pointer in c.  Useful for comparison.
+        """
+        return addressof(self._as_parameter_.contents)
+
+    def __bool__(self):
+        "Determine whether the object is valid by converting to boolean" # Python 3
+        return self._as_parameter_.__bool__()
+
+    def __nonzero__(self):
+        "Determine whether the object is valid by converting to boolean" # Python 2
+        return self._as_parameter_.__nonzero__()
+
+    def progname(self):
+        """
+        Return program name (argv[0])
+        """
+        return lib.zargs_progname(self._as_parameter_)
+
+    def arguments(self):
+        """
+        Return number of positional arguments
+        """
+        return lib.zargs_arguments(self._as_parameter_)
+
+    def first(self):
+        """
+        Return first positional argument or NULL
+        """
+        return lib.zargs_first(self._as_parameter_)
+
+    def next(self):
+        """
+        Return next positional argument or NULL
+        """
+        return lib.zargs_next(self._as_parameter_)
+
+    def param_first(self):
+        """
+        Return first named parameter value, or NULL if there are no named
+parameters, or value for which zargs_param_empty (arg) returns true.
+        """
+        return lib.zargs_param_first(self._as_parameter_)
+
+    def param_next(self):
+        """
+        Return next named parameter value, or NULL if there are no named
+parameters, or value for which zargs_param_empty (arg) returns true.
+        """
+        return lib.zargs_param_next(self._as_parameter_)
+
+    def param_name(self):
+        """
+        Return current parameter name, or NULL if there are no named
+parameters.
+        """
+        return lib.zargs_param_name(self._as_parameter_)
+
+    def param_lookup(self, keys):
+        """
+        Return value of named parameter, NULL if no given parameter has
+been specified, or special value for wich zargs_param_empty ()
+returns true.
+        """
+        return lib.zargs_param_lookup(self._as_parameter_, keys)
+
+    def param_lookupx(self, keys, *args):
+        """
+        Return value of named parameter(s), NULL if no given parameter has
+been specified, or special value for wich zargs_param_empty ()
+returns true.
+        """
+        return lib.zargs_param_lookupx(self._as_parameter_, keys, *args)
+
+    def has_help(self):
+        """
+        Returns true if there are --help -h arguments
+        """
+        return lib.zargs_has_help(self._as_parameter_)
+
+    @staticmethod
+    def param_empty(arg):
+        """
+        Returns true if parameter did not have a value
+        """
+        return lib.zargs_param_empty(arg)
+
+    def print(self):
+        """
+        Print an instance of zargs.
+        """
+        return lib.zargs_print(self._as_parameter_)
+
+    @staticmethod
+    def test(verbose):
+        """
+        Self test of this class.
+        """
+        return lib.zargs_test(verbose)
 
 
 # zarmour
@@ -532,6 +736,8 @@ lib.zcert_destroy.restype = None
 lib.zcert_destroy.argtypes = [POINTER(zcert_p)]
 lib.zcert_new_from.restype = zcert_p
 lib.zcert_new_from.argtypes = [c_void_p, c_void_p]
+lib.zcert_new_from_txt.restype = zcert_p
+lib.zcert_new_from_txt.argtypes = [c_char_p, c_char_p]
 lib.zcert_load.restype = zcert_p
 lib.zcert_load.argtypes = [c_char_p]
 lib.zcert_public_key.restype = c_void_p
@@ -621,6 +827,13 @@ class Zcert(object):
         Accepts public/secret key pair from caller
         """
         return Zcert(lib.zcert_new_from(public_key, secret_key), True)
+
+    @staticmethod
+    def new_from_txt(public_txt, secret_txt):
+        """
+        Accepts public/secret key text pair from caller
+        """
+        return Zcert(lib.zcert_new_from_txt(public_txt, secret_txt), True)
 
     @staticmethod
     def load(filename):
@@ -750,6 +963,8 @@ lib.zcertstore_empty.restype = None
 lib.zcertstore_empty.argtypes = [zcertstore_p]
 lib.zcertstore_print.restype = None
 lib.zcertstore_print.argtypes = [zcertstore_p]
+lib.zcertstore_certs.restype = zlistx_p
+lib.zcertstore_certs.argtypes = [zcertstore_p]
 lib.zcertstore_test.restype = None
 lib.zcertstore_test.argtypes = [c_bool]
 
@@ -840,6 +1055,15 @@ which don't usually have access to struct internals.
         Print list of certificates in store to logging facility
         """
         return lib.zcertstore_print(self._as_parameter_)
+
+    def certs(self):
+        """
+        Return a list of all the certificates in the store.
+The caller takes ownership of the zlistx_t object and is responsible
+for destroying it.  The caller does not take ownership of the zcert_t
+objects.
+        """
+        return Zlistx(lib.zcertstore_certs(self._as_parameter_), True)
 
     @staticmethod
     def test(verbose):
@@ -1264,6 +1488,10 @@ lib.zconfig_str_save.restype = POINTER(c_char)
 lib.zconfig_str_save.argtypes = [zconfig_p]
 lib.zconfig_has_changed.restype = c_bool
 lib.zconfig_has_changed.argtypes = [zconfig_p]
+lib.zconfig_remove_subtree.restype = None
+lib.zconfig_remove_subtree.argtypes = [zconfig_p]
+lib.zconfig_remove.restype = None
+lib.zconfig_remove.argtypes = [POINTER(zconfig_p)]
 lib.zconfig_fprint.restype = None
 lib.zconfig_fprint.argtypes = [zconfig_p, FILE_p]
 lib.zconfig_print.restype = None
@@ -1489,6 +1717,19 @@ existing data).
 file has changed in since the tree was loaded.
         """
         return lib.zconfig_has_changed(self._as_parameter_)
+
+    def remove_subtree(self):
+        """
+        Destroy subtree (all children)
+        """
+        return lib.zconfig_remove_subtree(self._as_parameter_)
+
+    @staticmethod
+    def remove(self_p):
+        """
+        Destroy node and subtree (all children)
+        """
+        return lib.zconfig_remove(byref(zconfig_p.from_param(self_p)))
 
     def fprint(self, file):
         """
@@ -1936,6 +2177,8 @@ lib.zfile_new.restype = zfile_p
 lib.zfile_new.argtypes = [c_char_p, c_char_p]
 lib.zfile_destroy.restype = None
 lib.zfile_destroy.argtypes = [POINTER(zfile_p)]
+lib.zfile_tmp.restype = zfile_p
+lib.zfile_tmp.argtypes = []
 lib.zfile_dup.restype = zfile_p
 lib.zfile_dup.argtypes = [zfile_p]
 lib.zfile_filename.restype = c_char_p
@@ -2032,6 +2275,14 @@ may be NULL, in which case it is not used.
     def __nonzero__(self):
         "Determine whether the object is valid by converting to boolean" # Python 2
         return self._as_parameter_.__nonzero__()
+
+    @staticmethod
+    def tmp():
+        """
+        Create new temporary file for writing via tmpfile. File is automaticaly
+deleted on destroy
+        """
+        return Zfile(lib.zfile_tmp(), True)
 
     def dup(self):
         """
@@ -2241,9 +2492,9 @@ class Zframe(object):
     working with single message frames
     """
 
-    MORE = 1 # 
-    REUSE = 2 # 
-    DONTWAIT = 4 # 
+    MORE = 1 #
+    REUSE = 2 #
+    DONTWAIT = 4 #
     allow_destruct = False
     def __init__(self, *args):
         """
@@ -2335,7 +2586,8 @@ Return -1 on error, 0 on success.
     def meta(self, property):
         """
         Return meta data property for frame
-Caller must free string when finished with it.
+The caller shall not modify or free the returned value, which shall be
+owned by the message.
         """
         return lib.zframe_meta(self._as_parameter_, property)
 
@@ -2696,14 +2948,15 @@ already exist. Hash values must printable strings; keys may not contain
         """
         When a hash table was loaded from a file by zhash_load, this method will
 reload the file if it has been modified since, and is "stable", i.e. not
-still changing. Returns 0 if OK, -1 if there was an error reloading the 
+still changing. Returns 0 if OK, -1 if there was an error reloading the
 file.
         """
         return lib.zhash_refresh(self._as_parameter_)
 
     def autofree(self):
         """
-        Set hash for automatic value destruction
+        Set hash for automatic value destruction. Note that this assumes that
+values are NULL-terminated strings. Do not use with different types.
         """
         return lib.zhash_autofree(self._as_parameter_)
 
@@ -3067,13 +3320,15 @@ using strdup.
         """
         Set a user-defined comparator for keys; by default keys are
 compared using strcmp.
+The callback function should return zero (0) on matching
+items.
         """
         return lib.zhashx_set_key_comparator(self._as_parameter_, comparator)
 
     def set_key_hasher(self, hasher):
         """
-        Set a user-defined comparator for keys; by default keys are
-compared using strcmp.
+        Set a user-defined hash function for keys; by default keys are
+hashed by a modified Bernstein hashing function.
         """
         return lib.zhashx_set_key_hasher(self._as_parameter_, hasher)
 
@@ -3115,6 +3370,12 @@ lib.ziflist_netmask.restype = c_char_p
 lib.ziflist_netmask.argtypes = [ziflist_p]
 lib.ziflist_print.restype = None
 lib.ziflist_print.argtypes = [ziflist_p]
+lib.ziflist_new_ipv6.restype = ziflist_p
+lib.ziflist_new_ipv6.argtypes = []
+lib.ziflist_reload_ipv6.restype = None
+lib.ziflist_reload_ipv6.argtypes = [ziflist_p]
+lib.ziflist_is_ipv6.restype = c_bool
+lib.ziflist_is_ipv6.argtypes = [ziflist_p]
 lib.ziflist_test.restype = None
 lib.ziflist_test.argtypes = [c_bool]
 
@@ -3213,6 +3474,26 @@ class Ziflist(object):
         Return the list of interfaces.
         """
         return lib.ziflist_print(self._as_parameter_)
+
+    @staticmethod
+    def new_ipv6():
+        """
+        Get a list of network interfaces currently defined on the system
+Includes IPv6 interfaces
+        """
+        return Ziflist(lib.ziflist_new_ipv6(), True)
+
+    def reload_ipv6(self):
+        """
+        Reload network interfaces from system, including IPv6
+        """
+        return lib.ziflist_reload_ipv6(self._as_parameter_)
+
+    def is_ipv6(self):
+        """
+        Return true if the current interface uses IPv6
+        """
+        return lib.ziflist_is_ipv6(self._as_parameter_)
 
     @staticmethod
     def test(verbose):
@@ -4531,6 +4812,42 @@ was interrupted, or the parent context was destroyed.
 
 
 # zproc
+lib.zproc_new.restype = zproc_p
+lib.zproc_new.argtypes = []
+lib.zproc_destroy.restype = None
+lib.zproc_destroy.argtypes = [POINTER(zproc_p)]
+lib.zproc_set_args.restype = None
+lib.zproc_set_args.argtypes = [zproc_p, zlistx_p]
+lib.zproc_set_env.restype = None
+lib.zproc_set_env.argtypes = [zproc_p, zhashx_p]
+lib.zproc_set_stdin.restype = None
+lib.zproc_set_stdin.argtypes = [zproc_p, c_void_p]
+lib.zproc_set_stdout.restype = None
+lib.zproc_set_stdout.argtypes = [zproc_p, c_void_p]
+lib.zproc_set_stderr.restype = None
+lib.zproc_set_stderr.argtypes = [zproc_p, c_void_p]
+lib.zproc_stdin.restype = c_void_p
+lib.zproc_stdin.argtypes = [zproc_p]
+lib.zproc_stdout.restype = c_void_p
+lib.zproc_stdout.argtypes = [zproc_p]
+lib.zproc_stderr.restype = c_void_p
+lib.zproc_stderr.argtypes = [zproc_p]
+lib.zproc_run.restype = c_int
+lib.zproc_run.argtypes = [zproc_p]
+lib.zproc_returncode.restype = c_int
+lib.zproc_returncode.argtypes = [zproc_p]
+lib.zproc_pid.restype = c_int
+lib.zproc_pid.argtypes = [zproc_p]
+lib.zproc_running.restype = c_bool
+lib.zproc_running.argtypes = [zproc_p]
+lib.zproc_wait.restype = c_int
+lib.zproc_wait.argtypes = [zproc_p, c_bool]
+lib.zproc_actor.restype = c_void_p
+lib.zproc_actor.argtypes = [zproc_p]
+lib.zproc_kill.restype = None
+lib.zproc_kill.argtypes = [zproc_p, c_int]
+lib.zproc_set_verbose.restype = None
+lib.zproc_set_verbose.argtypes = [zproc_p, c_bool]
 lib.zproc_czmq_version.restype = c_int
 lib.zproc_czmq_version.argtypes = []
 lib.zproc_interrupted.restype = c_bool
@@ -4576,6 +4893,30 @@ class Zproc(object):
     """
 
     allow_destruct = False
+    def __init__(self, *args):
+        """
+        Create a new zproc.
+NOTE: On Windows and with libzmq3 and libzmq2 this function
+returns NULL. Code needs to be ported there.
+        """
+        if len(args) == 2 and type(args[0]) is c_void_p and isinstance(args[1], bool):
+            self._as_parameter_ = cast(args[0], zproc_p) # Conversion from raw type to binding
+            self.allow_destruct = args[1] # This is a 'fresh' value, owned by us
+        elif len(args) == 2 and type(args[0]) is zproc_p and isinstance(args[1], bool):
+            self._as_parameter_ = args[0] # Conversion from raw type to binding
+            self.allow_destruct = args[1] # This is a 'fresh' value, owned by us
+        else:
+            assert(len(args) == 0)
+            self._as_parameter_ = lib.zproc_new() # Creation of new raw type
+            self.allow_destruct = True
+
+    def __del__(self):
+        """
+        Destroy zproc, wait until process ends.
+        """
+        if self.allow_destruct:
+            lib.zproc_destroy(byref(self._as_parameter_))
+
     def __eq__(self, other):
         if type(other) == type(self):
             return other.c_address() == self.c_address()
@@ -4595,6 +4936,112 @@ class Zproc(object):
     def __nonzero__(self):
         "Determine whether the object is valid by converting to boolean" # Python 2
         return self._as_parameter_.__nonzero__()
+
+    def set_args(self, args):
+        """
+        Setup the command line arguments, the first item must be an (absolute) filename
+to run.
+        """
+        return lib.zproc_set_args(self._as_parameter_, args)
+
+    def set_env(self, args):
+        """
+        Setup the environment variables for the process.
+        """
+        return lib.zproc_set_env(self._as_parameter_, args)
+
+    def set_stdin(self, socket):
+        """
+        Connects process stdin with a readable ('>', connect) zeromq socket. If
+socket argument is NULL, zproc creates own managed pair of inproc
+sockets.  The writable one is then accessbile via zproc_stdin method.
+        """
+        return lib.zproc_set_stdin(self._as_parameter_, socket)
+
+    def set_stdout(self, socket):
+        """
+        Connects process stdout with a writable ('@', bind) zeromq socket. If
+socket argument is NULL, zproc creates own managed pair of inproc
+sockets.  The readable one is then accessbile via zproc_stdout method.
+        """
+        return lib.zproc_set_stdout(self._as_parameter_, socket)
+
+    def set_stderr(self, socket):
+        """
+        Connects process stderr with a writable ('@', bind) zeromq socket. If
+socket argument is NULL, zproc creates own managed pair of inproc
+sockets.  The readable one is then accessbile via zproc_stderr method.
+        """
+        return lib.zproc_set_stderr(self._as_parameter_, socket)
+
+    def stdin(self):
+        """
+        Return subprocess stdin writable socket. NULL for
+not initialized or external sockets.
+        """
+        return c_void_p(lib.zproc_stdin(self._as_parameter_))
+
+    def stdout(self):
+        """
+        Return subprocess stdout readable socket. NULL for
+not initialized or external sockets.
+        """
+        return c_void_p(lib.zproc_stdout(self._as_parameter_))
+
+    def stderr(self):
+        """
+        Return subprocess stderr readable socket. NULL for
+not initialized or external sockets.
+        """
+        return c_void_p(lib.zproc_stderr(self._as_parameter_))
+
+    def run(self):
+        """
+        Starts the process.
+        """
+        return lib.zproc_run(self._as_parameter_)
+
+    def returncode(self):
+        """
+        process exit code
+        """
+        return lib.zproc_returncode(self._as_parameter_)
+
+    def pid(self):
+        """
+        PID of the process
+        """
+        return lib.zproc_pid(self._as_parameter_)
+
+    def running(self):
+        """
+        return true if process is running, false if not yet started or finished
+        """
+        return lib.zproc_running(self._as_parameter_)
+
+    def wait(self, hang):
+        """
+        wait or poll process status, return return code
+        """
+        return lib.zproc_wait(self._as_parameter_, hang)
+
+    def actor(self):
+        """
+        return internal actor, usefull for the polling if process died
+        """
+        return c_void_p(lib.zproc_actor(self._as_parameter_))
+
+    def kill(self, signal):
+        """
+        send a signal to the subprocess
+        """
+        return lib.zproc_kill(self._as_parameter_, signal)
+
+    def set_verbose(self, verbose):
+        """
+        set verbose mode
+        """
+        return lib.zproc_set_verbose(self._as_parameter_, verbose)
 
     @staticmethod
     def czmq_version():
@@ -5004,8 +5451,6 @@ lib.zsock_immediate.restype = c_int
 lib.zsock_immediate.argtypes = [zsock_p]
 lib.zsock_set_immediate.restype = None
 lib.zsock_set_immediate.argtypes = [zsock_p, c_int]
-lib.zsock_type.restype = c_int
-lib.zsock_type.argtypes = [zsock_p]
 lib.zsock_sndhwm.restype = c_int
 lib.zsock_sndhwm.argtypes = [zsock_p]
 lib.zsock_set_sndhwm.restype = None
@@ -5014,14 +5459,58 @@ lib.zsock_rcvhwm.restype = c_int
 lib.zsock_rcvhwm.argtypes = [zsock_p]
 lib.zsock_set_rcvhwm.restype = None
 lib.zsock_set_rcvhwm.argtypes = [zsock_p, c_int]
+lib.zsock_maxmsgsize.restype = c_int
+lib.zsock_maxmsgsize.argtypes = [zsock_p]
+lib.zsock_set_maxmsgsize.restype = None
+lib.zsock_set_maxmsgsize.argtypes = [zsock_p, c_int]
+lib.zsock_multicast_hops.restype = c_int
+lib.zsock_multicast_hops.argtypes = [zsock_p]
+lib.zsock_set_multicast_hops.restype = None
+lib.zsock_set_multicast_hops.argtypes = [zsock_p, c_int]
+lib.zsock_set_xpub_verbose.restype = None
+lib.zsock_set_xpub_verbose.argtypes = [zsock_p, c_int]
+lib.zsock_tcp_keepalive.restype = c_int
+lib.zsock_tcp_keepalive.argtypes = [zsock_p]
+lib.zsock_set_tcp_keepalive.restype = None
+lib.zsock_set_tcp_keepalive.argtypes = [zsock_p, c_int]
+lib.zsock_tcp_keepalive_idle.restype = c_int
+lib.zsock_tcp_keepalive_idle.argtypes = [zsock_p]
+lib.zsock_set_tcp_keepalive_idle.restype = None
+lib.zsock_set_tcp_keepalive_idle.argtypes = [zsock_p, c_int]
+lib.zsock_tcp_keepalive_cnt.restype = c_int
+lib.zsock_tcp_keepalive_cnt.argtypes = [zsock_p]
+lib.zsock_set_tcp_keepalive_cnt.restype = None
+lib.zsock_set_tcp_keepalive_cnt.argtypes = [zsock_p, c_int]
+lib.zsock_tcp_keepalive_intvl.restype = c_int
+lib.zsock_tcp_keepalive_intvl.argtypes = [zsock_p]
+lib.zsock_set_tcp_keepalive_intvl.restype = None
+lib.zsock_set_tcp_keepalive_intvl.argtypes = [zsock_p, c_int]
+lib.zsock_tcp_accept_filter.restype = POINTER(c_char)
+lib.zsock_tcp_accept_filter.argtypes = [zsock_p]
+lib.zsock_set_tcp_accept_filter.restype = None
+lib.zsock_set_tcp_accept_filter.argtypes = [zsock_p, c_char_p]
+lib.zsock_last_endpoint.restype = POINTER(c_char)
+lib.zsock_last_endpoint.argtypes = [zsock_p]
+lib.zsock_set_router_raw.restype = None
+lib.zsock_set_router_raw.argtypes = [zsock_p, c_int]
+lib.zsock_ipv4only.restype = c_int
+lib.zsock_ipv4only.argtypes = [zsock_p]
+lib.zsock_set_ipv4only.restype = None
+lib.zsock_set_ipv4only.argtypes = [zsock_p, c_int]
+lib.zsock_set_delay_attach_on_connect.restype = None
+lib.zsock_set_delay_attach_on_connect.argtypes = [zsock_p, c_int]
+lib.zsock_hwm.restype = c_int
+lib.zsock_hwm.argtypes = [zsock_p]
+lib.zsock_set_hwm.restype = None
+lib.zsock_set_hwm.argtypes = [zsock_p, c_int]
+lib.zsock_swap.restype = c_int
+lib.zsock_swap.argtypes = [zsock_p]
+lib.zsock_set_swap.restype = None
+lib.zsock_set_swap.argtypes = [zsock_p, c_int]
 lib.zsock_affinity.restype = c_int
 lib.zsock_affinity.argtypes = [zsock_p]
 lib.zsock_set_affinity.restype = None
 lib.zsock_set_affinity.argtypes = [zsock_p, c_int]
-lib.zsock_set_subscribe.restype = None
-lib.zsock_set_subscribe.argtypes = [zsock_p, c_char_p]
-lib.zsock_set_unsubscribe.restype = None
-lib.zsock_set_unsubscribe.argtypes = [zsock_p, c_char_p]
 lib.zsock_identity.restype = POINTER(c_char)
 lib.zsock_identity.argtypes = [zsock_p]
 lib.zsock_set_identity.restype = None
@@ -5034,6 +5523,22 @@ lib.zsock_recovery_ivl.restype = c_int
 lib.zsock_recovery_ivl.argtypes = [zsock_p]
 lib.zsock_set_recovery_ivl.restype = None
 lib.zsock_set_recovery_ivl.argtypes = [zsock_p, c_int]
+lib.zsock_recovery_ivl_msec.restype = c_int
+lib.zsock_recovery_ivl_msec.argtypes = [zsock_p]
+lib.zsock_set_recovery_ivl_msec.restype = None
+lib.zsock_set_recovery_ivl_msec.argtypes = [zsock_p, c_int]
+lib.zsock_mcast_loop.restype = c_int
+lib.zsock_mcast_loop.argtypes = [zsock_p]
+lib.zsock_set_mcast_loop.restype = None
+lib.zsock_set_mcast_loop.argtypes = [zsock_p, c_int]
+lib.zsock_rcvtimeo.restype = c_int
+lib.zsock_rcvtimeo.argtypes = [zsock_p]
+lib.zsock_set_rcvtimeo.restype = None
+lib.zsock_set_rcvtimeo.argtypes = [zsock_p, c_int]
+lib.zsock_sndtimeo.restype = c_int
+lib.zsock_sndtimeo.argtypes = [zsock_p]
+lib.zsock_set_sndtimeo.restype = None
+lib.zsock_set_sndtimeo.argtypes = [zsock_p, c_int]
 lib.zsock_sndbuf.restype = c_int
 lib.zsock_sndbuf.argtypes = [zsock_p]
 lib.zsock_set_sndbuf.restype = None
@@ -5058,60 +5563,18 @@ lib.zsock_backlog.restype = c_int
 lib.zsock_backlog.argtypes = [zsock_p]
 lib.zsock_set_backlog.restype = None
 lib.zsock_set_backlog.argtypes = [zsock_p, c_int]
-lib.zsock_maxmsgsize.restype = c_int
-lib.zsock_maxmsgsize.argtypes = [zsock_p]
-lib.zsock_set_maxmsgsize.restype = None
-lib.zsock_set_maxmsgsize.argtypes = [zsock_p, c_int]
-lib.zsock_multicast_hops.restype = c_int
-lib.zsock_multicast_hops.argtypes = [zsock_p]
-lib.zsock_set_multicast_hops.restype = None
-lib.zsock_set_multicast_hops.argtypes = [zsock_p, c_int]
-lib.zsock_rcvtimeo.restype = c_int
-lib.zsock_rcvtimeo.argtypes = [zsock_p]
-lib.zsock_set_rcvtimeo.restype = None
-lib.zsock_set_rcvtimeo.argtypes = [zsock_p, c_int]
-lib.zsock_sndtimeo.restype = c_int
-lib.zsock_sndtimeo.argtypes = [zsock_p]
-lib.zsock_set_sndtimeo.restype = None
-lib.zsock_set_sndtimeo.argtypes = [zsock_p, c_int]
-lib.zsock_set_xpub_verbose.restype = None
-lib.zsock_set_xpub_verbose.argtypes = [zsock_p, c_int]
-lib.zsock_tcp_keepalive.restype = c_int
-lib.zsock_tcp_keepalive.argtypes = [zsock_p]
-lib.zsock_set_tcp_keepalive.restype = None
-lib.zsock_set_tcp_keepalive.argtypes = [zsock_p, c_int]
-lib.zsock_tcp_keepalive_idle.restype = c_int
-lib.zsock_tcp_keepalive_idle.argtypes = [zsock_p]
-lib.zsock_set_tcp_keepalive_idle.restype = None
-lib.zsock_set_tcp_keepalive_idle.argtypes = [zsock_p, c_int]
-lib.zsock_tcp_keepalive_cnt.restype = c_int
-lib.zsock_tcp_keepalive_cnt.argtypes = [zsock_p]
-lib.zsock_set_tcp_keepalive_cnt.restype = None
-lib.zsock_set_tcp_keepalive_cnt.argtypes = [zsock_p, c_int]
-lib.zsock_tcp_keepalive_intvl.restype = c_int
-lib.zsock_tcp_keepalive_intvl.argtypes = [zsock_p]
-lib.zsock_set_tcp_keepalive_intvl.restype = None
-lib.zsock_set_tcp_keepalive_intvl.argtypes = [zsock_p, c_int]
-lib.zsock_tcp_accept_filter.restype = POINTER(c_char)
-lib.zsock_tcp_accept_filter.argtypes = [zsock_p]
-lib.zsock_set_tcp_accept_filter.restype = None
-lib.zsock_set_tcp_accept_filter.argtypes = [zsock_p, c_char_p]
+lib.zsock_set_subscribe.restype = None
+lib.zsock_set_subscribe.argtypes = [zsock_p, c_char_p]
+lib.zsock_set_unsubscribe.restype = None
+lib.zsock_set_unsubscribe.argtypes = [zsock_p, c_char_p]
+lib.zsock_type.restype = c_int
+lib.zsock_type.argtypes = [zsock_p]
 lib.zsock_rcvmore.restype = c_int
 lib.zsock_rcvmore.argtypes = [zsock_p]
 lib.zsock_fd.restype = socket_p
 lib.zsock_fd.argtypes = [zsock_p]
 lib.zsock_events.restype = c_int
 lib.zsock_events.argtypes = [zsock_p]
-lib.zsock_last_endpoint.restype = POINTER(c_char)
-lib.zsock_last_endpoint.argtypes = [zsock_p]
-lib.zsock_set_router_raw.restype = None
-lib.zsock_set_router_raw.argtypes = [zsock_p, c_int]
-lib.zsock_ipv4only.restype = c_int
-lib.zsock_ipv4only.argtypes = [zsock_p]
-lib.zsock_set_ipv4only.restype = None
-lib.zsock_set_ipv4only.argtypes = [zsock_p, c_int]
-lib.zsock_set_delay_attach_on_connect.restype = None
-lib.zsock_set_delay_attach_on_connect.argtypes = [zsock_p, c_int]
 lib.zsock_test.restype = None
 lib.zsock_test.argtypes = [c_bool]
 
@@ -5480,10 +5943,16 @@ reduce memory allocations. The pattern argument is a string that defines
 the type of each argument. See zsock_bsend for the supported argument
 types. All arguments must be pointers; this call sets them to point to
 values held on a per-socket basis.
-Note that zsock_brecv creates the returned objects, and the caller must
-destroy them when finished with them. The supplied pointers do not need
-to be initialized. Returns 0 if successful, or -1 if it failed to read
-a message.
+For types 1, 2, 4 and 8 the caller must allocate the memory itself before
+calling zsock_brecv.
+For types S, the caller must free the value once finished with it, as
+zsock_brecv will allocate the buffer.
+For type s, the caller must not free the value as it is stored in a
+local cache for performance purposes.
+For types c, f, u and m the caller must call the appropriate destructor
+depending on the object as zsock_brecv will create new objects.
+For type p the caller must coordinate with the sender, as it is just a
+pointer value being passed.
         """
         return lib.zsock_brecv(self._as_parameter_, picture, *args)
 
@@ -6100,13 +6569,6 @@ Available from libzmq 4.0.0.
         """
         return lib.zsock_set_immediate(self._as_parameter_, immediate)
 
-    def type(self):
-        """
-        Get socket option `type`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_type(self._as_parameter_)
-
     def sndhwm(self):
         """
         Get socket option `sndhwm`.
@@ -6135,160 +6597,6 @@ Available from libzmq 3.0.0.
         """
         return lib.zsock_set_rcvhwm(self._as_parameter_, rcvhwm)
 
-    def affinity(self):
-        """
-        Get socket option `affinity`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_affinity(self._as_parameter_)
-
-    def set_affinity(self, affinity):
-        """
-        Set socket option `affinity`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_affinity(self._as_parameter_, affinity)
-
-    def set_subscribe(self, subscribe):
-        """
-        Set socket option `subscribe`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_subscribe(self._as_parameter_, subscribe)
-
-    def set_unsubscribe(self, unsubscribe):
-        """
-        Set socket option `unsubscribe`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_unsubscribe(self._as_parameter_, unsubscribe)
-
-    def identity(self):
-        """
-        Get socket option `identity`.
-Available from libzmq 3.0.0.
-        """
-        return return_fresh_string(lib.zsock_identity(self._as_parameter_))
-
-    def set_identity(self, identity):
-        """
-        Set socket option `identity`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_identity(self._as_parameter_, identity)
-
-    def rate(self):
-        """
-        Get socket option `rate`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_rate(self._as_parameter_)
-
-    def set_rate(self, rate):
-        """
-        Set socket option `rate`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_rate(self._as_parameter_, rate)
-
-    def recovery_ivl(self):
-        """
-        Get socket option `recovery_ivl`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_recovery_ivl(self._as_parameter_)
-
-    def set_recovery_ivl(self, recovery_ivl):
-        """
-        Set socket option `recovery_ivl`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_recovery_ivl(self._as_parameter_, recovery_ivl)
-
-    def sndbuf(self):
-        """
-        Get socket option `sndbuf`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_sndbuf(self._as_parameter_)
-
-    def set_sndbuf(self, sndbuf):
-        """
-        Set socket option `sndbuf`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_sndbuf(self._as_parameter_, sndbuf)
-
-    def rcvbuf(self):
-        """
-        Get socket option `rcvbuf`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_rcvbuf(self._as_parameter_)
-
-    def set_rcvbuf(self, rcvbuf):
-        """
-        Set socket option `rcvbuf`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_rcvbuf(self._as_parameter_, rcvbuf)
-
-    def linger(self):
-        """
-        Get socket option `linger`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_linger(self._as_parameter_)
-
-    def set_linger(self, linger):
-        """
-        Set socket option `linger`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_linger(self._as_parameter_, linger)
-
-    def reconnect_ivl(self):
-        """
-        Get socket option `reconnect_ivl`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_reconnect_ivl(self._as_parameter_)
-
-    def set_reconnect_ivl(self, reconnect_ivl):
-        """
-        Set socket option `reconnect_ivl`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_reconnect_ivl(self._as_parameter_, reconnect_ivl)
-
-    def reconnect_ivl_max(self):
-        """
-        Get socket option `reconnect_ivl_max`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_reconnect_ivl_max(self._as_parameter_)
-
-    def set_reconnect_ivl_max(self, reconnect_ivl_max):
-        """
-        Set socket option `reconnect_ivl_max`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_reconnect_ivl_max(self._as_parameter_, reconnect_ivl_max)
-
-    def backlog(self):
-        """
-        Get socket option `backlog`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_backlog(self._as_parameter_)
-
-    def set_backlog(self, backlog):
-        """
-        Set socket option `backlog`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_backlog(self._as_parameter_, backlog)
-
     def maxmsgsize(self):
         """
         Get socket option `maxmsgsize`.
@@ -6316,34 +6624,6 @@ Available from libzmq 3.0.0.
 Available from libzmq 3.0.0.
         """
         return lib.zsock_set_multicast_hops(self._as_parameter_, multicast_hops)
-
-    def rcvtimeo(self):
-        """
-        Get socket option `rcvtimeo`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_rcvtimeo(self._as_parameter_)
-
-    def set_rcvtimeo(self, rcvtimeo):
-        """
-        Set socket option `rcvtimeo`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_rcvtimeo(self._as_parameter_, rcvtimeo)
-
-    def sndtimeo(self):
-        """
-        Get socket option `sndtimeo`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_sndtimeo(self._as_parameter_)
-
-    def set_sndtimeo(self, sndtimeo):
-        """
-        Set socket option `sndtimeo`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_set_sndtimeo(self._as_parameter_, sndtimeo)
 
     def set_xpub_verbose(self, xpub_verbose):
         """
@@ -6422,27 +6702,6 @@ Available from libzmq 3.0.0.
         """
         return lib.zsock_set_tcp_accept_filter(self._as_parameter_, tcp_accept_filter)
 
-    def rcvmore(self):
-        """
-        Get socket option `rcvmore`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_rcvmore(self._as_parameter_)
-
-    def fd(self):
-        """
-        Get socket option `fd`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_fd(self._as_parameter_)
-
-    def events(self):
-        """
-        Get socket option `events`.
-Available from libzmq 3.0.0.
-        """
-        return lib.zsock_events(self._as_parameter_)
-
     def last_endpoint(self):
         """
         Get socket option `last_endpoint`.
@@ -6478,6 +6737,272 @@ Available from libzmq 3.0.0.
         """
         return lib.zsock_set_delay_attach_on_connect(self._as_parameter_, delay_attach_on_connect)
 
+    def hwm(self):
+        """
+        Get socket option `hwm`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_hwm(self._as_parameter_)
+
+    def set_hwm(self, hwm):
+        """
+        Set socket option `hwm`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_set_hwm(self._as_parameter_, hwm)
+
+    def swap(self):
+        """
+        Get socket option `swap`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_swap(self._as_parameter_)
+
+    def set_swap(self, swap):
+        """
+        Set socket option `swap`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_set_swap(self._as_parameter_, swap)
+
+    def affinity(self):
+        """
+        Get socket option `affinity`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_affinity(self._as_parameter_)
+
+    def set_affinity(self, affinity):
+        """
+        Set socket option `affinity`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_affinity(self._as_parameter_, affinity)
+
+    def identity(self):
+        """
+        Get socket option `identity`.
+Available from libzmq 2.0.0.
+        """
+        return return_fresh_string(lib.zsock_identity(self._as_parameter_))
+
+    def set_identity(self, identity):
+        """
+        Set socket option `identity`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_identity(self._as_parameter_, identity)
+
+    def rate(self):
+        """
+        Get socket option `rate`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_rate(self._as_parameter_)
+
+    def set_rate(self, rate):
+        """
+        Set socket option `rate`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_rate(self._as_parameter_, rate)
+
+    def recovery_ivl(self):
+        """
+        Get socket option `recovery_ivl`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_recovery_ivl(self._as_parameter_)
+
+    def set_recovery_ivl(self, recovery_ivl):
+        """
+        Set socket option `recovery_ivl`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_recovery_ivl(self._as_parameter_, recovery_ivl)
+
+    def recovery_ivl_msec(self):
+        """
+        Get socket option `recovery_ivl_msec`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_recovery_ivl_msec(self._as_parameter_)
+
+    def set_recovery_ivl_msec(self, recovery_ivl_msec):
+        """
+        Set socket option `recovery_ivl_msec`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_set_recovery_ivl_msec(self._as_parameter_, recovery_ivl_msec)
+
+    def mcast_loop(self):
+        """
+        Get socket option `mcast_loop`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_mcast_loop(self._as_parameter_)
+
+    def set_mcast_loop(self, mcast_loop):
+        """
+        Set socket option `mcast_loop`.
+Available from libzmq 2.0.0 to 3.0.0.
+        """
+        return lib.zsock_set_mcast_loop(self._as_parameter_, mcast_loop)
+
+    def rcvtimeo(self):
+        """
+        Get socket option `rcvtimeo`.
+Available from libzmq 2.2.0.
+        """
+        return lib.zsock_rcvtimeo(self._as_parameter_)
+
+    def set_rcvtimeo(self, rcvtimeo):
+        """
+        Set socket option `rcvtimeo`.
+Available from libzmq 2.2.0.
+        """
+        return lib.zsock_set_rcvtimeo(self._as_parameter_, rcvtimeo)
+
+    def sndtimeo(self):
+        """
+        Get socket option `sndtimeo`.
+Available from libzmq 2.2.0.
+        """
+        return lib.zsock_sndtimeo(self._as_parameter_)
+
+    def set_sndtimeo(self, sndtimeo):
+        """
+        Set socket option `sndtimeo`.
+Available from libzmq 2.2.0.
+        """
+        return lib.zsock_set_sndtimeo(self._as_parameter_, sndtimeo)
+
+    def sndbuf(self):
+        """
+        Get socket option `sndbuf`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_sndbuf(self._as_parameter_)
+
+    def set_sndbuf(self, sndbuf):
+        """
+        Set socket option `sndbuf`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_sndbuf(self._as_parameter_, sndbuf)
+
+    def rcvbuf(self):
+        """
+        Get socket option `rcvbuf`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_rcvbuf(self._as_parameter_)
+
+    def set_rcvbuf(self, rcvbuf):
+        """
+        Set socket option `rcvbuf`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_rcvbuf(self._as_parameter_, rcvbuf)
+
+    def linger(self):
+        """
+        Get socket option `linger`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_linger(self._as_parameter_)
+
+    def set_linger(self, linger):
+        """
+        Set socket option `linger`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_linger(self._as_parameter_, linger)
+
+    def reconnect_ivl(self):
+        """
+        Get socket option `reconnect_ivl`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_reconnect_ivl(self._as_parameter_)
+
+    def set_reconnect_ivl(self, reconnect_ivl):
+        """
+        Set socket option `reconnect_ivl`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_reconnect_ivl(self._as_parameter_, reconnect_ivl)
+
+    def reconnect_ivl_max(self):
+        """
+        Get socket option `reconnect_ivl_max`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_reconnect_ivl_max(self._as_parameter_)
+
+    def set_reconnect_ivl_max(self, reconnect_ivl_max):
+        """
+        Set socket option `reconnect_ivl_max`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_reconnect_ivl_max(self._as_parameter_, reconnect_ivl_max)
+
+    def backlog(self):
+        """
+        Get socket option `backlog`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_backlog(self._as_parameter_)
+
+    def set_backlog(self, backlog):
+        """
+        Set socket option `backlog`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_backlog(self._as_parameter_, backlog)
+
+    def set_subscribe(self, subscribe):
+        """
+        Set socket option `subscribe`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_subscribe(self._as_parameter_, subscribe)
+
+    def set_unsubscribe(self, unsubscribe):
+        """
+        Set socket option `unsubscribe`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_set_unsubscribe(self._as_parameter_, unsubscribe)
+
+    def type(self):
+        """
+        Get socket option `type`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_type(self._as_parameter_)
+
+    def rcvmore(self):
+        """
+        Get socket option `rcvmore`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_rcvmore(self._as_parameter_)
+
+    def fd(self):
+        """
+        Get socket option `fd`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_fd(self._as_parameter_)
+
+    def events(self):
+        """
+        Get socket option `events`.
+Available from libzmq 2.0.0.
+        """
+        return lib.zsock_events(self._as_parameter_)
+
     @staticmethod
     def test(verbose):
         """
@@ -6491,6 +7016,8 @@ lib.zstr_recv.restype = POINTER(c_char)
 lib.zstr_recv.argtypes = [c_void_p]
 lib.zstr_recvx.restype = c_int
 lib.zstr_recvx.argtypes = [c_void_p, POINTER(c_char_p)]
+lib.zstr_recv_compress.restype = POINTER(c_char)
+lib.zstr_recv_compress.argtypes = [c_void_p]
 lib.zstr_send.restype = c_int
 lib.zstr_send.argtypes = [c_void_p, c_char_p]
 lib.zstr_sendm.restype = c_int
@@ -6501,6 +7028,10 @@ lib.zstr_sendfm.restype = c_int
 lib.zstr_sendfm.argtypes = [c_void_p, c_char_p]
 lib.zstr_sendx.restype = c_int
 lib.zstr_sendx.argtypes = [c_void_p, c_char_p]
+lib.zstr_send_compress.restype = c_int
+lib.zstr_send_compress.argtypes = [c_void_p, c_char_p]
+lib.zstr_sendm_compress.restype = c_int
+lib.zstr_sendm_compress.argtypes = [c_void_p, c_char_p]
 lib.zstr_str.restype = POINTER(c_char)
 lib.zstr_str.argtypes = [c_void_p]
 lib.zstr_free.restype = None
@@ -6557,6 +7088,16 @@ multipart frames in the message are dropped.
         return lib.zstr_recvx(source, byref(c_char_p.from_param(string_p)), *args)
 
     @staticmethod
+    def recv_compress(source):
+        """
+        De-compress and receive C string from socket, received as a message
+with two frames: size of the uncompressed string, and the string itself.
+Caller must free returned string using zstr_free(). Returns NULL if the
+context is being terminated or the process was interrupted.
+        """
+        return return_fresh_string(lib.zstr_recv_compress(source))
+
+    @staticmethod
     def send(dest, string):
         """
         Send a C string to a socket, as a frame. The string is sent without
@@ -6601,6 +7142,26 @@ Returns 0 if the strings could be sent OK, or -1 on error.
         return lib.zstr_sendx(dest, string, *args)
 
     @staticmethod
+    def send_compress(dest, string):
+        """
+        Compress and send a C string to a socket, as a message with two frames:
+size of the uncompressed string, and the string itself. The string is
+sent without trailing null byte; to read this you can use
+zstr_recv_compress, or a similar method that de-compresses and adds a
+null terminator on the received string.
+        """
+        return lib.zstr_send_compress(dest, string)
+
+    @staticmethod
+    def sendm_compress(dest, string):
+        """
+        Compress and send a C string to a socket, as zstr_send_compress(),
+with a MORE flag, so that you can send further strings in the same
+multi-part message.
+        """
+        return lib.zstr_sendm_compress(dest, string)
+
+    @staticmethod
     def str(source):
         """
         Accepts a void pointer and returns a fresh character string. If source
@@ -6622,6 +7183,746 @@ a null pointer.
         Self test of this class.
         """
         return lib.zstr_test(verbose)
+
+
+# zsys
+zsys_handler_fn = CFUNCTYPE(None, c_int)
+lib.zsys_init.restype = c_void_p
+lib.zsys_init.argtypes = []
+lib.zsys_shutdown.restype = None
+lib.zsys_shutdown.argtypes = []
+lib.zsys_socket.restype = c_void_p
+lib.zsys_socket.argtypes = [c_int, c_char_p, c_size_t]
+lib.zsys_close.restype = c_int
+lib.zsys_close.argtypes = [c_void_p, c_char_p, c_size_t]
+lib.zsys_sockname.restype = c_char_p
+lib.zsys_sockname.argtypes = [c_int]
+lib.zsys_create_pipe.restype = zsock_p
+lib.zsys_create_pipe.argtypes = [POINTER(zsock_p)]
+lib.zsys_handler_set.restype = None
+lib.zsys_handler_set.argtypes = [POINTER(zsys_handler_fn)]
+lib.zsys_handler_reset.restype = None
+lib.zsys_handler_reset.argtypes = []
+lib.zsys_catch_interrupts.restype = None
+lib.zsys_catch_interrupts.argtypes = []
+lib.zsys_file_exists.restype = c_bool
+lib.zsys_file_exists.argtypes = [c_char_p]
+lib.zsys_file_modified.restype = c_int
+lib.zsys_file_modified.argtypes = [c_char_p]
+lib.zsys_file_mode.restype = c_int
+lib.zsys_file_mode.argtypes = [c_char_p]
+lib.zsys_file_delete.restype = c_int
+lib.zsys_file_delete.argtypes = [c_char_p]
+lib.zsys_file_stable.restype = c_bool
+lib.zsys_file_stable.argtypes = [c_char_p]
+lib.zsys_dir_create.restype = c_int
+lib.zsys_dir_create.argtypes = [c_char_p]
+lib.zsys_dir_delete.restype = c_int
+lib.zsys_dir_delete.argtypes = [c_char_p]
+lib.zsys_dir_change.restype = c_int
+lib.zsys_dir_change.argtypes = [c_char_p]
+lib.zsys_file_mode_private.restype = None
+lib.zsys_file_mode_private.argtypes = []
+lib.zsys_file_mode_default.restype = None
+lib.zsys_file_mode_default.argtypes = []
+lib.zsys_version.restype = None
+lib.zsys_version.argtypes = [POINTER(c_int), POINTER(c_int), POINTER(c_int)]
+lib.zsys_sprintf.restype = c_char_p
+lib.zsys_sprintf.argtypes = [c_char_p]
+lib.zsys_vprintf.restype = c_char_p
+lib.zsys_vprintf.argtypes = [c_char_p, va_list_p]
+lib.zsys_udp_new.restype = socket_p
+lib.zsys_udp_new.argtypes = [c_bool]
+lib.zsys_udp_close.restype = c_int
+lib.zsys_udp_close.argtypes = [socket_p]
+lib.zsys_udp_send.restype = c_int
+lib.zsys_udp_send.argtypes = [socket_p, zframe_p, c_void_p, c_int]
+lib.zsys_udp_recv.restype = zframe_p
+lib.zsys_udp_recv.argtypes = [socket_p, c_char_p, c_int]
+lib.zsys_socket_error.restype = None
+lib.zsys_socket_error.argtypes = [c_char_p]
+lib.zsys_hostname.restype = c_char_p
+lib.zsys_hostname.argtypes = []
+lib.zsys_daemonize.restype = c_int
+lib.zsys_daemonize.argtypes = [c_char_p]
+lib.zsys_run_as.restype = c_int
+lib.zsys_run_as.argtypes = [c_char_p, c_char_p, c_char_p]
+lib.zsys_has_curve.restype = c_bool
+lib.zsys_has_curve.argtypes = []
+lib.zsys_set_io_threads.restype = None
+lib.zsys_set_io_threads.argtypes = [c_size_t]
+lib.zsys_set_thread_sched_policy.restype = None
+lib.zsys_set_thread_sched_policy.argtypes = [c_int]
+lib.zsys_set_thread_priority.restype = None
+lib.zsys_set_thread_priority.argtypes = [c_int]
+lib.zsys_set_max_sockets.restype = None
+lib.zsys_set_max_sockets.argtypes = [c_size_t]
+lib.zsys_socket_limit.restype = c_size_t
+lib.zsys_socket_limit.argtypes = []
+lib.zsys_set_max_msgsz.restype = None
+lib.zsys_set_max_msgsz.argtypes = [c_int]
+lib.zsys_max_msgsz.restype = c_int
+lib.zsys_max_msgsz.argtypes = []
+lib.zsys_set_file_stable_age_msec.restype = None
+lib.zsys_set_file_stable_age_msec.argtypes = [msecs_p]
+lib.zsys_file_stable_age_msec.restype = msecs_p
+lib.zsys_file_stable_age_msec.argtypes = []
+lib.zsys_set_linger.restype = None
+lib.zsys_set_linger.argtypes = [c_size_t]
+lib.zsys_set_sndhwm.restype = None
+lib.zsys_set_sndhwm.argtypes = [c_size_t]
+lib.zsys_set_rcvhwm.restype = None
+lib.zsys_set_rcvhwm.argtypes = [c_size_t]
+lib.zsys_set_pipehwm.restype = None
+lib.zsys_set_pipehwm.argtypes = [c_size_t]
+lib.zsys_pipehwm.restype = c_size_t
+lib.zsys_pipehwm.argtypes = []
+lib.zsys_set_ipv6.restype = None
+lib.zsys_set_ipv6.argtypes = [c_int]
+lib.zsys_ipv6.restype = c_int
+lib.zsys_ipv6.argtypes = []
+lib.zsys_set_interface.restype = None
+lib.zsys_set_interface.argtypes = [c_char_p]
+lib.zsys_interface.restype = c_char_p
+lib.zsys_interface.argtypes = []
+lib.zsys_set_ipv6_address.restype = None
+lib.zsys_set_ipv6_address.argtypes = [c_char_p]
+lib.zsys_ipv6_address.restype = c_char_p
+lib.zsys_ipv6_address.argtypes = []
+lib.zsys_set_ipv6_mcast_address.restype = None
+lib.zsys_set_ipv6_mcast_address.argtypes = [c_char_p]
+lib.zsys_ipv6_mcast_address.restype = c_char_p
+lib.zsys_ipv6_mcast_address.argtypes = []
+lib.zsys_set_auto_use_fd.restype = None
+lib.zsys_set_auto_use_fd.argtypes = [c_int]
+lib.zsys_auto_use_fd.restype = c_int
+lib.zsys_auto_use_fd.argtypes = []
+lib.zsys_set_logident.restype = None
+lib.zsys_set_logident.argtypes = [c_char_p]
+lib.zsys_set_logstream.restype = None
+lib.zsys_set_logstream.argtypes = [FILE_p]
+lib.zsys_set_logsender.restype = None
+lib.zsys_set_logsender.argtypes = [c_char_p]
+lib.zsys_set_logsystem.restype = None
+lib.zsys_set_logsystem.argtypes = [c_bool]
+lib.zsys_error.restype = None
+lib.zsys_error.argtypes = [c_char_p]
+lib.zsys_warning.restype = None
+lib.zsys_warning.argtypes = [c_char_p]
+lib.zsys_notice.restype = None
+lib.zsys_notice.argtypes = [c_char_p]
+lib.zsys_info.restype = None
+lib.zsys_info.argtypes = [c_char_p]
+lib.zsys_debug.restype = None
+lib.zsys_debug.argtypes = [c_char_p]
+lib.zsys_test.restype = None
+lib.zsys_test.argtypes = [c_bool]
+
+class Zsys(object):
+    """
+
+    """
+
+    allow_destruct = False
+    def __eq__(self, other):
+        if type(other) == type(self):
+            return other.c_address() == self.c_address()
+        elif type(other) == c_void_p:
+            return other.value == self.c_address()
+
+    def c_address(self):
+        """
+        Return the address of the object pointer in c.  Useful for comparison.
+        """
+        return addressof(self._as_parameter_.contents)
+
+    def __bool__(self):
+        "Determine whether the object is valid by converting to boolean" # Python 3
+        return self._as_parameter_.__bool__()
+
+    def __nonzero__(self):
+        "Determine whether the object is valid by converting to boolean" # Python 2
+        return self._as_parameter_.__nonzero__()
+
+    @staticmethod
+    def init():
+        """
+        Initialize CZMQ zsys layer; this happens automatically when you create
+a socket or an actor; however this call lets you force initialization
+earlier, so e.g. logging is properly set-up before you start working.
+Not threadsafe, so call only from main thread. Safe to call multiple
+times. Returns global CZMQ context.
+        """
+        return c_void_p(lib.zsys_init())
+
+    @staticmethod
+    def shutdown():
+        """
+        Optionally shut down the CZMQ zsys layer; this normally happens automatically
+when the process exits; however this call lets you force a shutdown
+earlier, avoiding any potential problems with atexit() ordering, especially
+with Windows dlls.
+        """
+        return lib.zsys_shutdown()
+
+    @staticmethod
+    def socket(type, filename, line_nbr):
+        """
+        Get a new ZMQ socket, automagically creating a ZMQ context if this is
+the first time. Caller is responsible for destroying the ZMQ socket
+before process exits, to avoid a ZMQ deadlock. Note: you should not use
+this method in CZMQ apps, use zsock_new() instead.
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return c_void_p(lib.zsys_socket(type, filename, line_nbr))
+
+    @staticmethod
+    def close(handle, filename, line_nbr):
+        """
+        Destroy/close a ZMQ socket. You should call this for every socket you
+create using zsys_socket().
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_close(handle, filename, line_nbr)
+
+    @staticmethod
+    def sockname(socktype):
+        """
+        Return ZMQ socket name for socket type
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_sockname(socktype)
+
+    @staticmethod
+    def create_pipe(backend_p):
+        """
+        Create a pipe, which consists of two PAIR sockets connected over inproc.
+The pipe is configured to use the zsys_pipehwm setting. Returns the
+frontend socket successful, NULL if failed.
+        """
+        return Zsock(lib.zsys_create_pipe(byref(zsock_p.from_param(backend_p))), False)
+
+    @staticmethod
+    def handler_set(handler_fn):
+        """
+        Set interrupt handler; this saves the default handlers so that a
+zsys_handler_reset () can restore them. If you call this multiple times
+then the last handler will take affect. If handler_fn is NULL, disables
+default SIGINT/SIGTERM handling in CZMQ.
+        """
+        return lib.zsys_handler_set(byref(zsys_handler_fn.from_param(handler_fn)))
+
+    @staticmethod
+    def handler_reset():
+        """
+        Reset interrupt handler, call this at exit if needed
+        """
+        return lib.zsys_handler_reset()
+
+    @staticmethod
+    def catch_interrupts():
+        """
+        Set default interrupt handler, so Ctrl-C or SIGTERM will set
+zsys_interrupted. Idempotent; safe to call multiple times.
+Can be supressed by ZSYS_SIGHANDLER=false
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_catch_interrupts()
+
+    @staticmethod
+    def file_exists(filename):
+        """
+        Return 1 if file exists, else zero
+        """
+        return lib.zsys_file_exists(filename)
+
+    @staticmethod
+    def file_modified(filename):
+        """
+        Return file modification time. Returns 0 if the file does not exist.
+        """
+        return lib.zsys_file_modified(filename)
+
+    @staticmethod
+    def file_mode(filename):
+        """
+        Return file mode; provides at least support for the POSIX S_ISREG(m)
+and S_ISDIR(m) macros and the S_IRUSR and S_IWUSR bits, on all boxes.
+Returns a mode_t cast to int, or -1 in case of error.
+        """
+        return lib.zsys_file_mode(filename)
+
+    @staticmethod
+    def file_delete(filename):
+        """
+        Delete file. Does not complain if the file is absent
+        """
+        return lib.zsys_file_delete(filename)
+
+    @staticmethod
+    def file_stable(filename):
+        """
+        Check if file is 'stable'
+        """
+        return lib.zsys_file_stable(filename)
+
+    @staticmethod
+    def dir_create(pathname, *args):
+        """
+        Create a file path if it doesn't exist. The file path is treated as
+printf format.
+        """
+        return lib.zsys_dir_create(pathname, *args)
+
+    @staticmethod
+    def dir_delete(pathname, *args):
+        """
+        Remove a file path if empty; the pathname is treated as printf format.
+        """
+        return lib.zsys_dir_delete(pathname, *args)
+
+    @staticmethod
+    def dir_change(pathname):
+        """
+        Move to a specified working directory. Returns 0 if OK, -1 if this failed.
+        """
+        return lib.zsys_dir_change(pathname)
+
+    @staticmethod
+    def file_mode_private():
+        """
+        Set private file creation mode; all files created from here will be
+readable/writable by the owner only.
+        """
+        return lib.zsys_file_mode_private()
+
+    @staticmethod
+    def file_mode_default():
+        """
+        Reset default file creation mode; all files created from here will use
+process file mode defaults.
+        """
+        return lib.zsys_file_mode_default()
+
+    @staticmethod
+    def version(major, minor, patch):
+        """
+        Return the CZMQ version for run-time API detection; returns version
+number into provided fields, providing reference isn't null in each case.
+        """
+        return lib.zsys_version(byref(c_int.from_param(major)), byref(c_int.from_param(minor)), byref(c_int.from_param(patch)))
+
+    @staticmethod
+    def sprintf(format, *args):
+        """
+        Format a string using printf formatting, returning a freshly allocated
+buffer. If there was insufficient memory, returns NULL. Free the returned
+string using zstr_free().
+        """
+        return lib.zsys_sprintf(format, *args)
+
+    @staticmethod
+    def vprintf(format, argptr):
+        """
+        Format a string with a va_list argument, returning a freshly allocated
+buffer. If there was insufficient memory, returns NULL. Free the returned
+string using zstr_free().
+        """
+        return lib.zsys_vprintf(format, argptr)
+
+    @staticmethod
+    def udp_new(routable):
+        """
+        Create UDP beacon socket; if the routable option is true, uses
+multicast (not yet implemented), else uses broadcast. This method
+and related ones might _eventually_ be moved to a zudp class.
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_udp_new(routable)
+
+    @staticmethod
+    def udp_close(handle):
+        """
+        Close a UDP socket
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_udp_close(handle)
+
+    @staticmethod
+    def udp_send(udpsock, frame, address, addrlen):
+        """
+        Send zframe to UDP socket, return -1 if sending failed due to
+interface having disappeared (happens easily with WiFi)
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_udp_send(udpsock, frame, address, addrlen)
+
+    @staticmethod
+    def udp_recv(udpsock, peername, peerlen):
+        """
+        Receive zframe from UDP socket, and set address of peer that sent it
+The peername must be a char [INET_ADDRSTRLEN] array if IPv6 is disabled or
+NI_MAXHOST if it's enabled. Returns NULL when failing to get peer address.
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return Zframe(lib.zsys_udp_recv(udpsock, peername, peerlen), False)
+
+    @staticmethod
+    def socket_error(reason):
+        """
+        Handle an I/O error on some socket operation; will report and die on
+fatal errors, and continue silently on "try again" errors.
+*** This is for CZMQ internal use only and may change arbitrarily ***
+        """
+        return lib.zsys_socket_error(reason)
+
+    @staticmethod
+    def hostname():
+        """
+        Return current host name, for use in public tcp:// endpoints. Caller gets
+a freshly allocated string, should free it using zstr_free(). If the host
+name is not resolvable, returns NULL.
+        """
+        return lib.zsys_hostname()
+
+    @staticmethod
+    def daemonize(workdir):
+        """
+        Move the current process into the background. The precise effect depends
+on the operating system. On POSIX boxes, moves to a specified working
+directory (if specified), closes all file handles, reopens stdin, stdout,
+and stderr to the null device, and sets the process to ignore SIGHUP. On
+Windows, does nothing. Returns 0 if OK, -1 if there was an error.
+        """
+        return lib.zsys_daemonize(workdir)
+
+    @staticmethod
+    def run_as(lockfile, group, user):
+        """
+        Drop the process ID into the lockfile, with exclusive lock, and switch
+the process to the specified group and/or user. Any of the arguments
+may be null, indicating a no-op. Returns 0 on success, -1 on failure.
+Note if you combine this with zsys_daemonize, run after, not before
+that method, or the lockfile will hold the wrong process ID.
+        """
+        return lib.zsys_run_as(lockfile, group, user)
+
+    @staticmethod
+    def has_curve():
+        """
+        Returns true if the underlying libzmq supports CURVE security.
+Uses a heuristic probe according to the version of libzmq being used.
+        """
+        return lib.zsys_has_curve()
+
+    @staticmethod
+    def set_io_threads(io_threads):
+        """
+        Configure the number of I/O threads that ZeroMQ will use. A good
+rule of thumb is one thread per gigabit of traffic in or out. The
+default is 1, sufficient for most applications. If the environment
+variable ZSYS_IO_THREADS is defined, that provides the default.
+Note that this method is valid only before any socket is created.
+        """
+        return lib.zsys_set_io_threads(io_threads)
+
+    @staticmethod
+    def set_thread_sched_policy(policy):
+        """
+        Configure the scheduling policy of the ZMQ context thread pool.
+Not available on Windows. See the sched_setscheduler man page or sched.h
+for more information. If the environment variable ZSYS_THREAD_SCHED_POLICY
+is defined, that provides the default.
+Note that this method is valid only before any socket is created.
+        """
+        return lib.zsys_set_thread_sched_policy(policy)
+
+    @staticmethod
+    def set_thread_priority(priority):
+        """
+        Configure the scheduling priority of the ZMQ context thread pool.
+Not available on Windows. See the sched_setscheduler man page or sched.h
+for more information. If the environment variable ZSYS_THREAD_PRIORITY is
+defined, that provides the default.
+Note that this method is valid only before any socket is created.
+        """
+        return lib.zsys_set_thread_priority(priority)
+
+    @staticmethod
+    def set_max_sockets(max_sockets):
+        """
+        Configure the number of sockets that ZeroMQ will allow. The default
+is 1024. The actual limit depends on the system, and you can query it
+by using zsys_socket_limit (). A value of zero means "maximum".
+Note that this method is valid only before any socket is created.
+        """
+        return lib.zsys_set_max_sockets(max_sockets)
+
+    @staticmethod
+    def socket_limit():
+        """
+        Return maximum number of ZeroMQ sockets that the system will support.
+        """
+        return lib.zsys_socket_limit()
+
+    @staticmethod
+    def set_max_msgsz(max_msgsz):
+        """
+        Configure the maximum allowed size of a message sent.
+The default is INT_MAX.
+        """
+        return lib.zsys_set_max_msgsz(max_msgsz)
+
+    @staticmethod
+    def max_msgsz():
+        """
+        Return maximum message size.
+        """
+        return lib.zsys_max_msgsz()
+
+    @staticmethod
+    def set_file_stable_age_msec(file_stable_age_msec):
+        """
+        Configure the threshold value of filesystem object age per st_mtime
+that should elapse until we consider that object "stable" at the
+current zclock_time() moment.
+The default is S_DEFAULT_ZSYS_FILE_STABLE_AGE_MSEC defined in zsys.c
+which generally depends on host OS, with fallback value of 5000.
+        """
+        return lib.zsys_set_file_stable_age_msec(file_stable_age_msec)
+
+    @staticmethod
+    def file_stable_age_msec():
+        """
+        Return current threshold value of file stable age in msec.
+This can be used in code that chooses to wait for this timeout
+before testing if a filesystem object is "stable" or not.
+        """
+        return lib.zsys_file_stable_age_msec()
+
+    @staticmethod
+    def set_linger(linger):
+        """
+        Configure the default linger timeout in msecs for new zsock instances.
+You can also set this separately on each zsock_t instance. The default
+linger time is zero, i.e. any pending messages will be dropped. If the
+environment variable ZSYS_LINGER is defined, that provides the default.
+Note that process exit will typically be delayed by the linger time.
+        """
+        return lib.zsys_set_linger(linger)
+
+    @staticmethod
+    def set_sndhwm(sndhwm):
+        """
+        Configure the default outgoing pipe limit (HWM) for new zsock instances.
+You can also set this separately on each zsock_t instance. The default
+HWM is 1,000, on all versions of ZeroMQ. If the environment variable
+ZSYS_SNDHWM is defined, that provides the default. Note that a value of
+zero means no limit, i.e. infinite memory consumption.
+        """
+        return lib.zsys_set_sndhwm(sndhwm)
+
+    @staticmethod
+    def set_rcvhwm(rcvhwm):
+        """
+        Configure the default incoming pipe limit (HWM) for new zsock instances.
+You can also set this separately on each zsock_t instance. The default
+HWM is 1,000, on all versions of ZeroMQ. If the environment variable
+ZSYS_RCVHWM is defined, that provides the default. Note that a value of
+zero means no limit, i.e. infinite memory consumption.
+        """
+        return lib.zsys_set_rcvhwm(rcvhwm)
+
+    @staticmethod
+    def set_pipehwm(pipehwm):
+        """
+        Configure the default HWM for zactor internal pipes; this is set on both
+ends of the pipe, for outgoing messages only (sndhwm). The default HWM is
+1,000, on all versions of ZeroMQ. If the environment var ZSYS_ACTORHWM is
+defined, that provides the default. Note that a value of zero means no
+limit, i.e. infinite memory consumption.
+        """
+        return lib.zsys_set_pipehwm(pipehwm)
+
+    @staticmethod
+    def pipehwm():
+        """
+        Return the HWM for zactor internal pipes.
+        """
+        return lib.zsys_pipehwm()
+
+    @staticmethod
+    def set_ipv6(ipv6):
+        """
+        Configure use of IPv6 for new zsock instances. By default sockets accept
+and make only IPv4 connections. When you enable IPv6, sockets will accept
+and connect to both IPv4 and IPv6 peers. You can override the setting on
+each zsock_t instance. The default is IPv4 only (ipv6 set to 0). If the
+environment variable ZSYS_IPV6 is defined (as 1 or 0), this provides the
+default. Note: has no effect on ZMQ v2.
+        """
+        return lib.zsys_set_ipv6(ipv6)
+
+    @staticmethod
+    def ipv6():
+        """
+        Return use of IPv6 for zsock instances.
+        """
+        return lib.zsys_ipv6()
+
+    @staticmethod
+    def set_interface(value):
+        """
+        Set network interface name to use for broadcasts, particularly zbeacon.
+This lets the interface be configured for test environments where required.
+For example, on Mac OS X, zbeacon cannot bind to 255.255.255.255 which is
+the default when there is no specified interface. If the environment
+variable ZSYS_INTERFACE is set, use that as the default interface name.
+Setting the interface to "*" means "use all available interfaces".
+        """
+        return lib.zsys_set_interface(value)
+
+    @staticmethod
+    def interface():
+        """
+        Return network interface to use for broadcasts, or "" if none was set.
+        """
+        return lib.zsys_interface()
+
+    @staticmethod
+    def set_ipv6_address(value):
+        """
+        Set IPv6 address to use zbeacon socket, particularly for receiving zbeacon.
+This needs to be set IPv6 is enabled as IPv6 can have multiple addresses
+on a given interface. If the environment variable ZSYS_IPV6_ADDRESS is set,
+use that as the default IPv6 address.
+        """
+        return lib.zsys_set_ipv6_address(value)
+
+    @staticmethod
+    def ipv6_address():
+        """
+        Return IPv6 address to use for zbeacon reception, or "" if none was set.
+        """
+        return lib.zsys_ipv6_address()
+
+    @staticmethod
+    def set_ipv6_mcast_address(value):
+        """
+        Set IPv6 milticast address to use for sending zbeacon messages. This needs
+to be set if IPv6 is enabled. If the environment variable
+ZSYS_IPV6_MCAST_ADDRESS is set, use that as the default IPv6 multicast
+address.
+        """
+        return lib.zsys_set_ipv6_mcast_address(value)
+
+    @staticmethod
+    def ipv6_mcast_address():
+        """
+        Return IPv6 multicast address to use for sending zbeacon, or "" if none was
+set.
+        """
+        return lib.zsys_ipv6_mcast_address()
+
+    @staticmethod
+    def set_auto_use_fd(auto_use_fd):
+        """
+        Configure the automatic use of pre-allocated FDs when creating new sockets.
+If 0 (default), nothing will happen. Else, when a new socket is bound, the
+system API will be used to check if an existing pre-allocated FD with a
+matching port (if TCP) or path (if IPC) exists, and if it does it will be
+set via the ZMQ_USE_FD socket option so that the library will use it
+instead of creating a new socket.
+        """
+        return lib.zsys_set_auto_use_fd(auto_use_fd)
+
+    @staticmethod
+    def auto_use_fd():
+        """
+        Return use of automatic pre-allocated FDs for zsock instances.
+        """
+        return lib.zsys_auto_use_fd()
+
+    @staticmethod
+    def set_logident(value):
+        """
+        Set log identity, which is a string that prefixes all log messages sent
+by this process. The log identity defaults to the environment variable
+ZSYS_LOGIDENT, if that is set.
+        """
+        return lib.zsys_set_logident(value)
+
+    @staticmethod
+    def set_logstream(stream):
+        """
+        Set stream to receive log traffic. By default, log traffic is sent to
+stdout. If you set the stream to NULL, no stream will receive the log
+traffic (it may still be sent to the system facility).
+        """
+        return lib.zsys_set_logstream(coerce_py_file(stream))
+
+    @staticmethod
+    def set_logsender(endpoint):
+        """
+        Sends log output to a PUB socket bound to the specified endpoint. To
+collect such log output, create a SUB socket, subscribe to the traffic
+you care about, and connect to the endpoint. Log traffic is sent as a
+single string frame, in the same format as when sent to stdout. The
+log system supports a single sender; multiple calls to this method will
+bind the same sender to multiple endpoints. To disable the sender, call
+this method with a null argument.
+        """
+        return lib.zsys_set_logsender(endpoint)
+
+    @staticmethod
+    def set_logsystem(logsystem):
+        """
+        Enable or disable logging to the system facility (syslog on POSIX boxes,
+event log on Windows). By default this is disabled.
+        """
+        return lib.zsys_set_logsystem(logsystem)
+
+    @staticmethod
+    def error(format, *args):
+        """
+        Log error condition - highest priority
+        """
+        return lib.zsys_error(format, *args)
+
+    @staticmethod
+    def warning(format, *args):
+        """
+        Log warning condition - high priority
+        """
+        return lib.zsys_warning(format, *args)
+
+    @staticmethod
+    def notice(format, *args):
+        """
+        Log normal, but significant, condition - normal priority
+        """
+        return lib.zsys_notice(format, *args)
+
+    @staticmethod
+    def info(format, *args):
+        """
+        Log informational message - low priority
+        """
+        return lib.zsys_info(format, *args)
+
+    @staticmethod
+    def debug(format, *args):
+        """
+        Log debug-level message - lowest priority
+        """
+        return lib.zsys_debug(format, *args)
+
+    @staticmethod
+    def test(verbose):
+        """
+        Self test of this class.
+        """
+        return lib.zsys_test(verbose)
 
 
 # ztimerset

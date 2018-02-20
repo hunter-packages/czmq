@@ -1,13 +1,13 @@
 #
 #    czmq - The high-level C binding for 0MQ
 #
-#    Copyright (c) the Contributors as noted in the AUTHORS file.       
-#    This file is part of CZMQ, the high-level C binding for 0MQ:       
-#    http://czmq.zeromq.org.                                            
-#                                                                       
+#    Copyright (c) the Contributors as noted in the AUTHORS file.
+#    This file is part of CZMQ, the high-level C binding for 0MQ:
+#    http://czmq.zeromq.org.
+#
 #    This Source Code Form is subject to the terms of the Mozilla Public
 #    License, v. 2.0. If a copy of the MPL was not distributed with this
-#    file, You can obtain one at http://mozilla.org/MPL/2.0/.           
+#    file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
 # To build with draft APIs, use "--with drafts" in rpmbuild for local builds or add
@@ -20,8 +20,21 @@
 %else
 %define DRAFTS no
 %endif
+
+# build with python_cffi support enabled
+%bcond_with python_cffi
+%if %{with python_cffi}
+%define py2_ver %(python2 -c "import sys; print ('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
+%endif
+
+# build with python3_cffi support enabled
+%bcond_with python3_cffi
+%if %{with python3_cffi}
+%define py3_ver %(python3 -c "import sys; print ('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
+%endif
+
 Name:           czmq
-Version:        4.0.2
+Version:        4.1.0
 Release:        1
 Summary:        the high-level c binding for 0mq
 License:        MPLv2
@@ -39,8 +52,19 @@ BuildRequires:  libtool
 BuildRequires:  pkgconfig
 BuildRequires:  xmlto
 BuildRequires:  zeromq-devel
-BuildRequires:  uuid-devel
+BuildRequires:  libuuid-devel
 BuildRequires:  systemd-devel
+BuildRequires:  liblz4-devel
+%if %{with python_cffi}
+BuildRequires:  python-cffi
+BuildRequires:  python-devel
+BuildRequires:  python-setuptools
+%endif
+%if %{with python3_cffi}
+BuildRequires:  python3-devel
+BuildRequires:  python3-cffi
+BuildRequires:  python3-setuptools
+%endif
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 
 %description
@@ -48,11 +72,10 @@ czmq the high-level c binding for 0mq.
 
 %package -n libczmq4
 Group:          System/Libraries
-Summary:        the high-level c binding for 0mq
+Summary:        the high-level c binding for 0mq shared library
 
 %description -n libczmq4
-czmq the high-level c binding for 0mq.
-This package contains shared library.
+This package contains shared library for czmq: the high-level c binding for 0mq
 
 %post -n libczmq4 -p /sbin/ldconfig
 %postun -n libczmq4 -p /sbin/ldconfig
@@ -66,12 +89,13 @@ Summary:        the high-level c binding for 0mq
 Group:          System/Libraries
 Requires:       libczmq4 = %{version}
 Requires:       zeromq-devel
-Requires:       uuid-devel
+Requires:       libuuid-devel
 Requires:       systemd-devel
+Requires:       liblz4-devel
 
 %description devel
-czmq the high-level c binding for 0mq.
-This package contains development files.
+the high-level c binding for 0mq development tools
+This package contains development files for czmq: the high-level c binding for 0mq
 
 %files devel
 %defattr(-,root,root)
@@ -80,16 +104,75 @@ This package contains development files.
 %{_libdir}/pkgconfig/libczmq.pc
 %{_mandir}/man3/*
 %{_mandir}/man7/*
-%{_datadir}/zproject/
-%{_datadir}/zproject/czmq/
+# Install api files into /usr/local/share/zproject
+%dir %{_datadir}/zproject/
+%dir %{_datadir}/zproject/czmq
+%{_datadir}/zproject/czmq/*.api
+
+%if %{with python_cffi}
+%package -n python2-czmq-cffi
+Group: Python
+Summary: Python CFFI bindings for czmq
+Requires: python >= %{py2_ver}.0, python < 3.0.0
+
+%description -n python2-czmq-cffi
+This package contains Python CFFI bindings for czmq
+
+%files -n python2-czmq-cffi
+%{_libdir}/python%{py2_ver}/site-packages/czmq_cffi/
+%{_libdir}/python%{py2_ver}/site-packages/czmq_cffi-*-py%{py2_ver}.egg-info/
+%endif
+
+%if %{with python3_cffi}
+%package -n python3-czmq-cffi
+Group: Python
+Summary: Python 3 CFFI bindings for czmq
+Requires: python = %{py3_ver}
+
+%description -n python3-czmq-cffi
+This package contains Python 3 CFFI bindings for czmq
+
+%files -n python3-czmq-cffi
+%{_libdir}/python%{py3_ver}/site-packages/czmq_cffi/
+%{_libdir}/python%{py3_ver}/site-packages/czmq_cffi-*-py%{py3_ver}.egg-info/
+%endif
 
 %prep
+#FIXME: error:... did not worked for me
+%if %{with python_cffi}
+%if %{without drafts}
+echo "FATAL: python_cffi not yet supported w/o drafts"
+exit 1
+%endif
+%endif
+
 %setup -q
 
 %build
 sh autogen.sh
-%{configure} --enable-drafts=%{DRAFTS}
+%{configure} --enable-drafts=%{DRAFTS} --with-uuid=yes --with-libsystemd=yes --with-liblz4=yes
 make %{_smp_mflags}
+%if %{with python_cffi}
+# Problem: we need pkg-config points to built and not yet installed copy of czmq
+# Solution: chicken-egg problem - let's make "fake" pkg-config file
+sed -e "s@^libdir.*@libdir=`pwd`/src/.libs@" \
+    -e "s@^includedir.*@includedir=`pwd`/include@" \
+    src/libczmq.pc > bindings/python_cffi/libczmq.pc
+cd bindings/python_cffi
+export PKG_CONFIG_PATH=`pwd`
+python2 setup.py build
+%endif
+
+%if %{with python3_cffi}
+# Problem: we need pkg-config points to built and not yet installed copy of czmq
+# Solution: chicken-egg problem - let's make "fake" pkg-config file
+sed -e "s@^libdir.*@libdir=`pwd`/src/.libs@" \
+    -e "s@^includedir.*@includedir=`pwd`/include@" \
+    src/libczmq.pc > bindings/python_cffi/libczmq.pc
+cd bindings/python_cffi
+export PKG_CONFIG_PATH=`pwd`
+python3 setup.py build
+%endif
 
 %install
 make install DESTDIR=%{buildroot} %{?_smp_mflags}
@@ -98,6 +181,17 @@ make install DESTDIR=%{buildroot} %{?_smp_mflags}
 find %{buildroot} -name '*.a' | xargs rm -f
 find %{buildroot} -name '*.la' | xargs rm -f
 
+%if %{with python_cffi}
+cd bindings/python_cffi
+export PKG_CONFIG_PATH=`pwd`
+python2 setup.py install --root=%{buildroot} --skip-build --prefix %{_prefix}
+%endif
+
+%if %{with python3_cffi}
+cd bindings/python_cffi
+export PKG_CONFIG_PATH=`pwd`
+python3 setup.py install --root=%{buildroot} --skip-build --prefix %{_prefix}
+%endif
 %files
 %defattr(-,root,root)
 %doc README.md

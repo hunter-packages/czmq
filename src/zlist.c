@@ -70,7 +70,7 @@ zlist_destroy (zlist_t **self_p)
     if (*self_p) {
         zlist_t *self = *self_p;
         zlist_purge (self);
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -242,7 +242,7 @@ zlist_pop (zlist_t *self)
         self->head = node->next;
         if (self->tail == node)
             self->tail = NULL;
-        free (node);
+        freen (node);
         self->size--;
     }
     self->cursor = NULL;
@@ -310,12 +310,12 @@ zlist_remove (zlist_t *self, void *item)
             self->cursor = prev;
 
         if (self->autofree)
-            free (node->item);
+            freen (node->item);
         else
         if (node->free_fn)
             (node->free_fn)(node->item);
 
-        free (node);
+        freen (node);
         self->size--;
     }
 }
@@ -363,12 +363,12 @@ zlist_purge (zlist_t *self)
     while (node) {
         node_t *next = node->next;
         if (self->autofree)
-            free (node->item);
+            freen (node->item);
         else
         if (node->free_fn)
             (node->free_fn)(node->item);
 
-        free (node);
+        freen (node);
         node = next;
     }
     self->head = NULL;
@@ -617,13 +617,17 @@ zlist_test (bool verbose)
     assert (streq ((const char *) zlist_first (list), bread));
     item = (char *) zlist_pop (list);
     assert (streq (item, bread));
-    free (item);
+    freen (item);
     item = (char *) zlist_pop (list);
     assert (streq (item, cheese));
-    free (item);
+    freen (item);
 
     zlist_destroy (&list);
     assert (list == NULL);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

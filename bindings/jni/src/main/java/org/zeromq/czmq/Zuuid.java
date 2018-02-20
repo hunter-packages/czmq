@@ -31,7 +31,7 @@ public class Zuuid implements AutoCloseable{
     Create UUID object from supplied ZUUID_LEN-octet value.
     */
     native static long __newFrom (byte [] source);
-    public Zuuid newFrom (byte [] source) {
+    public static Zuuid newFrom (byte [] source) {
         return new Zuuid (__newFrom (source));
     }
     /*
@@ -52,7 +52,7 @@ public class Zuuid implements AutoCloseable{
     }
     /*
     Set UUID to new supplied string value skipping '-' and '{' '}'
-    optional delimiters. Return 0 if OK, else returns -1.         
+    optional delimiters. Return 0 if OK, else returns -1.
     */
     native static int __setStr (long self, String source);
     public int setStr (String source) {
@@ -81,8 +81,8 @@ public class Zuuid implements AutoCloseable{
     }
     /*
     Return UUID in the canonical string format: 8-4-4-4-12, in lower
-    case. Caller does not modify or free returned value. See        
-    http://en.wikipedia.org/wiki/Universally_unique_identifier      
+    case. Caller does not modify or free returned value. See
+    http://en.wikipedia.org/wiki/Universally_unique_identifier
     */
     native static String __strCanonical (long self);
     public String strCanonical () {
@@ -111,7 +111,7 @@ public class Zuuid implements AutoCloseable{
     }
     /*
     Make copy of UUID object; if uuid is null, or memory was exhausted,
-    returns null.                                                      
+    returns null.
     */
     native static long __dup (long self);
     public Zuuid dup () {

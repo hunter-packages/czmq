@@ -40,7 +40,7 @@
 
 
 // TODO: Move to a more appropriate location:
-char *
+static char *
 s_strndup (const char *s, size_t size) {
     char *dup;
     char *end = (char *) memchr (s, '\0', size);
@@ -170,12 +170,12 @@ s_ztrie_node_destroy (ztrie_node_t **self_p)
         if (self->parameter_count > 0) {
             size_t index;
             for (index = 0; index < self->parameter_count; index++) {
-                free (self->parameter_names [index]);
+                freen (self->parameter_names [index]);
                 if (self->parameter_values [index])
-                    free (self->parameter_values [index]);
+                    freen (self->parameter_values [index]);
             }
-            free (self->parameter_names);
-            free (self->parameter_values);
+            freen (self->parameter_names);
+            freen (self->parameter_values);
         }
         if (self->token_type == NODE_TYPE_REGEX || self->token_type == NODE_TYPE_PARAM)
             zrex_destroy (&self->regex);
@@ -184,7 +184,7 @@ s_ztrie_node_destroy (ztrie_node_t **self_p)
             (self->destroy_data_fn) (&self->data);
 
         //  Free object itself
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -251,7 +251,7 @@ ztrie_destroy (ztrie_t **self_p)
         zlistx_destroy (&self->params);
 
         //  Free object itself
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -307,10 +307,10 @@ s_ztrie_matches_token (ztrie_node_t *parent, char *token, int len)
                             s_ztrie_node_update_param (child, index, zrex_hit (child->regex, index));
                     }
                 }
-                free (token_term);
+                freen (token_term);
                 return child;
             }
-            free (token_term);
+            freen (token_term);
         }
         child = (ztrie_node_t *) zlistx_next (parent->children);
     }
@@ -799,6 +799,10 @@ ztrie_test (bool verbose)
 
     zstr_free (&data);
     ztrie_destroy (&self);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

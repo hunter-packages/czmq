@@ -101,11 +101,11 @@ zhash_destroy (zhash_t **self_p)
             }
         }
         if (self->items)
-            free (self->items);
+            freen (self->items);
 
         zlist_destroy (&self->comments);
-        free (self->filename);
-        free (self);
+        freen (self->filename);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -135,12 +135,12 @@ s_item_destroy (zhash_t *self, item_t *item, bool hard)
             (item->free_fn) (item->value);
         else
         if (self->autofree)
-            free (item->value);
+            freen (item->value);
 
-        free (item->key);
+        freen (item->key);
         self->cursor_item = NULL;
         self->cursor_key = NULL;
-        free (item);
+        freen (item);
     }
 }
 
@@ -180,7 +180,7 @@ zhash_insert (zhash_t *self, const char *key, void *value)
             }
         }
         //  Destroy old hash table
-        free (self->items);
+        freen (self->items);
         self->items = new_items;
         self->limit = new_limit;
     }
@@ -276,7 +276,7 @@ zhash_update (zhash_t *self, const char *key, void *value)
             (item->free_fn) (item->value);
         else
         if (self->autofree)
-            free (item->value);
+            freen (item->value);
 
         //  If necessary, take duplicate of item (string) value
         if (self->autofree) {
@@ -334,7 +334,7 @@ zhash_rename (zhash_t *self, const char *old_key, const char *new_key)
     item_t *new_item = s_item_lookup (self, new_key);
     if (old_item && !new_item) {
         s_item_destroy (self, old_item, false);
-        free (old_item->key);
+        freen (old_item->key);
         old_item->key = strdup (new_key);
         assert (old_item->key);
         old_item->index = self->cached_index;
@@ -578,7 +578,7 @@ zhash_load (zhash_t *self, const char *filename)
     //  Take copy of filename in case self->filename is same string.
     char *filename_copy = strdup (filename);
     assert (filename_copy);
-    free (self->filename);
+    freen (self->filename);
     self->filename = filename_copy;
     self->modified = zsys_file_modified (self->filename);
 
@@ -599,7 +599,7 @@ zhash_load (zhash_t *self, const char *filename)
             *equals++ = 0;
             zhash_update (self, buffer, equals);
         }
-        free (buffer);
+        freen (buffer);
         fclose (handle);
     }
     else
@@ -906,6 +906,8 @@ zhash_test (bool verbose)
     srandom ((unsigned) time (NULL));
     for (iteration = 0; iteration < 25000; iteration++) {
         testnbr = randof (testmax);
+        assert (testnbr != testmax);
+        assert (testnbr < testmax);
         if (testset [testnbr].exists) {
             item = (char *) zhash_lookup (hash, testset [testnbr].name);
             assert (item);
@@ -944,6 +946,10 @@ zhash_test (bool verbose)
     assert (streq ((char *) zhash_lookup (hash, "key1"), "This is a string"));
     assert (streq ((char *) zhash_lookup (hash, "key2"), "Ring a ding ding"));
     zhash_destroy (&hash);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

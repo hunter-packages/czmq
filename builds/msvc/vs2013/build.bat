@@ -28,7 +28,7 @@ IF EXIST "..\..\..\..\libzmq\builds/msvc/vs2013\libzmq.import.props" (
     IF errorlevel 1 GOTO error
 ) ELSE (
     ECHO Did not find libzmq, aborting.
-    ECHO Please clone from https://github.com/zeromq/libzmq, and then build.
+    ECHO Please clone from https://github.com/zeromq/libzmq.git, and then build.
     GOTO error
 )
 IF EXIST "..\..\..\..\uuid\builds/msvc/vs2013\uuid.import.props" (
@@ -46,6 +46,14 @@ IF EXIST "..\..\..\..\systemd\builds/msvc/vs2013\systemd.import.props" (
     ECHO Building with systemd
 ) ELSE (
     ECHO Building without systemd
+)
+IF EXIST "..\..\..\..\lz4\builds/msvc/vs2013\lz4.import.props" (
+    COPY /Y "..\..\..\..\lz4\builds/msvc/vs2013\lz4.import.props" . > %log%
+    IF errorlevel 1 GOTO error
+    SET packages=%packages% /p:HAVE_LZ4=1
+    ECHO Building with lz4
+) ELSE (
+    ECHO Building without lz4
 )
 
 ECHO %action% CZMQ... (%packages%)

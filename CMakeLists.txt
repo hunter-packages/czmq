@@ -6,7 +6,12 @@
 ########################################################################
 # Project setup
 ########################################################################
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0.0)
+include("cmake/HunterGate.cmake")
+HunterGate(
+    URL "https://github.com/ruslo/hunter/archive/v0.20.9.tar.gz"
+    SHA1 "8f7cf6d719d05c49224a4ebeba90c6bb90b90f4a"
+)
 project(czmq)
 enable_language(C)
 enable_testing()
@@ -26,7 +31,21 @@ if (NOT CMAKE_BUILD_TYPE)
     if (EXISTS "${SOURCE_DIR}/.git")
         set (CMAKE_BUILD_TYPE Debug)
     else ()
-        set (CMAKE_BUILD_TYPE Release)
+# http://xit0.org/2013/04/cmake-use-git-branch-and-commit-details-in-project/
+# http://stackoverflow.com/questions/6797395/cmake-execute-process-always-fails-with-no-such-file-or-directory-when-i-cal
+        execute_process(
+            COMMAND git rev-parse --show-toplevel
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            RESULT_VARIABLE git_result
+            OUTPUT_VARIABLE git_root
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        message(STATUS "git workspace root [${git_result}]: ${git_root}")
+        if ( "${git_result}" == "0" )
+            set (CMAKE_BUILD_TYPE Debug)
+        else ()
+            set (CMAKE_BUILD_TYPE Release)
+        endif ()
     endif ()
 endif ()
 if (${CMAKE_BUILD_TYPE} STREQUAL "Debug")
@@ -77,6 +96,13 @@ if (MSVC)
     set(MORE_LIBRARIES ws2_32 Rpcrt4 Iphlpapi)
 endif()
 
+# specific case of windows UWP
+if( "${CMAKE_SYSTEM_NAME}" STREQUAL "WindowsStore" AND "${CMAKE_SYSTEM_VERSION}" STREQUAL "10.0")
+  ADD_DEFINITIONS(-DZMQ_HAVE_WINDOWS_UWP)
+  ADD_DEFINITIONS(-D_WIN32_WINNT=_WIN32_WINNT_WIN10)
+endif()
+
+
 # required libraries for mingw
 if (MINGW)
     set(MORE_LIBRARIES -lws2_32 -lrpcrt4 -liphlpapi)
@@ -93,14 +119,13 @@ set(OPTIONAL_LIBRARIES)
 ########################################################################
 # LIBZMQ dependency
 ########################################################################
-find_package(libzmq REQUIRED)
-IF (LIBZMQ_FOUND)
-    include_directories(${LIBZMQ_INCLUDE_DIRS})
-    list(APPEND MORE_LIBRARIES ${LIBZMQ_LIBRARIES})
-    set(pkg_config_libs_private "${pkg_config_libs_private} -lzmq")
-ELSE (LIBZMQ_FOUND)
-    message( FATAL_ERROR "libzmq not found." )
-ENDIF (LIBZMQ_FOUND)
+hunter_add_package(zeromq)
+find_package(zeromq CONFIG REQUIRED)
+if(BUILD_SHARED_LIBS)
+    set(LIBZMQ_HUNTER_TARGET "ZeroMQ::libzmq")
+else()
+    set(LIBZMQ_HUNTER_TARGET "ZeroMQ::libzmq-static")
+endif()
 
 ########################################################################
 # UUID dependency
@@ -125,6 +150,28 @@ IF (SYSTEMD_FOUND)
     add_definitions(-DHAVE_LIBSYSTEMD)
     list(APPEND OPTIONAL_LIBRARIES ${SYSTEMD_LIBRARIES})
 ENDIF (SYSTEMD_FOUND)
+
+########################################################################
+# LZ4 dependency
+########################################################################
+find_package(lz4)
+IF (LZ4_FOUND)
+    include_directories(${LZ4_INCLUDE_DIRS})
+    list(APPEND MORE_LIBRARIES ${LZ4_LIBRARIES})
+    set(pkg_config_libs_private "${pkg_config_libs_private} -llz4")
+    add_definitions(-DHAVE_LIBLZ4)
+    list(APPEND OPTIONAL_LIBRARIES ${LZ4_LIBRARIES})
+ENDIF (LZ4_FOUND)
+
+########################################################################
+# version
+########################################################################
+set(CZMQ_VERSION_MAJOR 4)
+set(CZMQ_VERSION_MINOR 1)
+set(CZMQ_VERSION_PATCH 0)
+set(CZMQ_VERSION "${CZMQ_VERSION_MAJOR}.${CZMQ_VERSION_MINOR}.${CZMQ_VERSION_PATCH}")
+message(STATUS "Detected CZMQ Version - ${CZMQ_VERSION}")
+
 
 ########################################################################
 # includes
@@ -155,6 +202,7 @@ set (czmq_headers
     include/zpoller.h
     include/zsock.h
     include/zstr.h
+    include/zsys.h
     include/zuuid.h
     include/zauth.h
     include/zbeacon.h
@@ -162,7 +210,6 @@ set (czmq_headers
     include/zmonitor.h
     include/zproxy.h
     include/zrex.h
-    include/zsys.h
     src/zgossip_msg.h
     src/zsock_option.inc
     src/zgossip_engine.inc
@@ -176,6 +223,7 @@ set (czmq_headers
 
 IF (ENABLE_DRAFTS)
     list(APPEND czmq_headers
+        include/zargs.h
         include/zproc.h
         include/ztimerset.h
         include/ztrie.h
@@ -212,6 +260,7 @@ set (czmq_sources
     src/zpoller.c
     src/zsock.c
     src/zstr.c
+    src/zsys.c
     src/zuuid.c
     src/zauth.c
     src/zbeacon.c
@@ -219,45 +268,102 @@ set (czmq_sources
     src/zmonitor.c
     src/zproxy.c
     src/zrex.c
-    src/zsys.c
     src/zgossip_msg.c
 )
 
 IF (ENABLE_DRAFTS)
     list (APPEND czmq_sources
+        src/zargs.c
         src/zproc.c
         src/ztimerset.c
         src/ztrie.c
     )
 ENDIF (ENABLE_DRAFTS)
 
-source_group("Source Files" FILES ${czmq_sources})
-if (NOT DEFINED BUILD_SHARED_LIBS)
-    SET(BUILD_SHARED_LIBS ON)
-endif()
-add_library(czmq ${czmq_sources})
-set_target_properties(czmq
-    PROPERTIES DEFINE_SYMBOL "CZMQ_EXPORTS"
-)
-set_target_properties(czmq
-    PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
-)
-target_link_libraries(czmq
-    ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES}
-)
+IF (ENABLE_DRAFTS)
+    list (APPEND czmq_sources
+        src/czmq_private_selftest.c
+    )
+ENDIF (ENABLE_DRAFTS)
 
-install(TARGETS czmq
+source_group("Source Files" FILES ${czmq_sources})
+
+
+option(CZMQ_BUILD_SHARED "Whether or not to build the shared object" OFF)
+option(CZMQ_BUILD_STATIC "Whether or not to build the static archive" ON)
+
+if (NOT CZMQ_BUILD_SHARED AND NOT CZMQ_BUILD_STATIC)
+  message(FATAL_ERROR "Neither static nor shared library build enabled")
+endif()
+
+# shared
+if (CZMQ_BUILD_SHARED)
+  add_library(czmq SHARED ${czmq_sources})
+
+  set_target_properties (czmq PROPERTIES
+    PUBLIC_HEADER "${public_headers}"
+    DEFINE_SYMBOL "CZMQ_EXPORTS"
+    SOVERSION "4"
+    VERSION "${CZMQ_VERSION}"
+    COMPILE_DEFINITIONS "DLL_EXPORT"
+    OUTPUT_NAME "czmq"
+    PREFIX "lib"
+  )
+
+  target_link_libraries(czmq
+    ${MORE_LIBRARIES}
+    ${LIBZMQ_HUNTER_TARGET}
+  )
+
+  install(TARGETS czmq
     LIBRARY DESTINATION "lib${LIB_SUFFIX}" # .so file
     ARCHIVE DESTINATION "lib${LIB_SUFFIX}" # .lib file
-    RUNTIME DESTINATION bin              # .dll file
-)
+    RUNTIME DESTINATION bin                # .dll file
+  )
+
+  target_include_directories(czmq
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+endif()
+
+# static
+if (CZMQ_BUILD_STATIC)
+  add_library(czmq-static STATIC ${czmq_sources})
+
+  set_target_properties(czmq-static PROPERTIES
+    PUBLIC_HEADER "${public_headers}"
+    COMPILE_DEFINITIONS "CZMQ_STATIC"
+    OUTPUT_NAME "czmq"
+    PREFIX "lib"
+  )
+
+  target_link_libraries(czmq-static
+    ${MORE_LIBRARIES}
+    ${LIBZMQ_HUNTER_TARGET}
+  )
+
+  install(TARGETS czmq-static
+    LIBRARY DESTINATION "lib${LIB_SUFFIX}" # .so file
+    ARCHIVE DESTINATION "lib${LIB_SUFFIX}" # .lib file
+    RUNTIME DESTINATION bin                # .dll file
+  )
+
+  target_include_directories(czmq-static
+    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_compile_definitions(czmq-static
+    PUBLIC CZMQ_STATIC
+  )
+
+endif()
+
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists-local.txt) # Optional project-local hook
 
 ########################################################################
 # pkgconfig
 ########################################################################
-set (VERSION "4.0.2")
+set (VERSION "4.1.0")
 set (prefix "${CMAKE_INSTALL_PREFIX}")
 set (exec_prefix "\${prefix}")
 set (libdir "\${prefix}/lib${LIB_SUFFIX}")
@@ -284,30 +390,85 @@ add_executable(
     zmakecert
     "${SOURCE_DIR}/src/zmakecert.c"
 )
+if (TARGET czmq)
 target_link_libraries(
     zmakecert
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
-set_target_properties(
+endif()
+if (NOT TARGET czmq AND TARGET czmq-static)
+target_link_libraries(
     zmakecert
-    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
+    czmq-static
+    ${LIBZMQ_HUNTER_TARGET}
+    ${OPTIONAL_LIBRARIES}
 )
+endif()
+install(TARGETS zmakecert
+    RUNTIME DESTINATION bin
+)
+add_executable(
+    zsp
+    "${SOURCE_DIR}/src/zsp.c"
+)
+if (TARGET czmq)
+target_link_libraries(
+    zsp
+    czmq
+    ${LIBZMQ_HUNTER_TARGET}
+    ${OPTIONAL_LIBRARIES}
+)
+endif()
+if (NOT TARGET czmq AND TARGET czmq-static)
+target_link_libraries(
+    zsp
+    czmq-static
+    ${LIBZMQ_HUNTER_TARGET}
+    ${OPTIONAL_LIBRARIES}
+)
+endif()
+add_executable(
+    test_randof
+    "${SOURCE_DIR}/src/test_randof.c"
+)
+if (TARGET czmq)
+target_link_libraries(
+    test_randof
+    czmq
+    ${LIBZMQ_HUNTER_TARGET}
+    ${OPTIONAL_LIBRARIES}
+)
+endif()
+if (NOT TARGET czmq AND TARGET czmq-static)
+target_link_libraries(
+    test_randof
+    czmq-static
+    ${LIBZMQ_HUNTER_TARGET}
+    ${OPTIONAL_LIBRARIES}
+)
+endif()
 add_executable(
     czmq_selftest
     "${SOURCE_DIR}/src/czmq_selftest.c"
 )
+if (TARGET czmq)
 target_link_libraries(
     czmq_selftest
     czmq
-    ${LIBZMQ_LIBRARIES}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
-set_target_properties(
+endif()
+if (NOT TARGET czmq AND TARGET czmq-static)
+target_link_libraries(
     czmq_selftest
-    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${SOURCE_DIR}/src"
+    czmq-static
+    ${LIBZMQ_HUNTER_TARGET}
+    ${OPTIONAL_LIBRARIES}
 )
+endif()
 
 ########################################################################
 # tests
@@ -345,6 +506,7 @@ set(TEST_CLASSES
     zpoller
     zsock
     zstr
+    zsys
     zuuid
     zauth
     zbeacon
@@ -352,16 +514,38 @@ set(TEST_CLASSES
     zmonitor
     zproxy
     zrex
-    zsys
 )
 
 IF (ENABLE_DRAFTS)
     list (APPEND TEST_CLASSES
+    zargs
     zproc
     ztimerset
     ztrie
     )
 ENDIF (ENABLE_DRAFTS)
+
+IF (ENABLE_DRAFTS)
+    list (APPEND TEST_CLASSES
+    private_classes
+    )
+ENDIF (ENABLE_DRAFTS)
+
+
+add_custom_target(
+    copy-selftest-ro ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/src/selftest-ro ${CMAKE_BINARY_DIR}/src/selftest-ro
+)
+
+add_custom_target(
+    make-selftest-rw ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/src/selftest-rw
+)
+
+set_directory_properties(
+    PROPERTIES
+    ADDITIONAL_MAKE_CLEAN_FILES "${CMAKE_BINARY_DIR}/src/selftest-ro;${CMAKE_BINARY_DIR}/src/selftest-rw"
+)
 
 foreach(TEST_CLASS ${TEST_CLASSES})
     add_test(
@@ -371,6 +555,10 @@ foreach(TEST_CLASS ${TEST_CLASSES})
     set_tests_properties(
         ${TEST_CLASS}
         PROPERTIES TIMEOUT ${CLASSTEST_TIMEOUT}
+    )
+    set_tests_properties(
+        ${TEST_CLASS}
+        PROPERTIES DEPENDS "copy-selftest-ro;make-selftest-rw"
     )
 endforeach(TEST_CLASS)
 
@@ -394,6 +582,8 @@ set(cmake_generated ${CMAKE_BINARY_DIR}/CMakeCache.txt
                     ${CMAKE_BINARY_DIR}/src/libczmq.so
                     ${CMAKE_BINARY_DIR}/src/czmq_selftest
                     ${CMAKE_BINARY_DIR}/src/zmakecert
+                    ${CMAKE_BINARY_DIR}/src/zsp
+                    ${CMAKE_BINARY_DIR}/src/test_randof
                     ${CMAKE_BINARY_DIR}/src/czmq_selftest
 )
 
@@ -417,6 +607,8 @@ message (STATUS "  C compiler        :   ${CMAKE_C_COMPILER}")
 message (STATUS "  Debug C flags     :   ${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_FLAGS}")
 message (STATUS "  Release C flags   :   ${CMAKE_C_FLAGS_RELEASE} ${CMAKE_C_FLAGS}")
 message (STATUS "  Build type        :   ${CMAKE_BUILD_TYPE}")
+message (STATUS "  Static build      :   ${CZMQ_BUILD_STATIC}")
+message (STATUS "  Shared build      :   ${CZMQ_BUILD_SHARED}")
 IF (ENABLE_DRAFTS)
 message (STATUS "  Draft API         :   Yes")
 ELSE (ENABLE_DRAFTS)

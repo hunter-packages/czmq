@@ -117,8 +117,8 @@ s_disk_loader_state_destroy (void **self_p)
     assert (self_p);
     if (*self_p) {
         disk_loader_state *self = (disk_loader_state *)*self_p;
-        free (self->location);
-        free (self);
+        freen (self->location);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -176,7 +176,7 @@ zcertstore_destroy (zcertstore_t **self_p)
         if (self->destructor)
             self->destructor (&self->state);
 
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -236,6 +236,18 @@ zcertstore_empty (zcertstore_t *self)
     zhashx_purge (self->certs);
 }
 
+//  --------------------------------------------------------------------------
+//  Return a list of all the certificates in the store
+
+zlistx_t *
+zcertstore_certs (zcertstore_t *self)
+{
+    if (self->loader)
+        self->loader (self);
+    zlistx_t *certs = zhashx_values(self->certs);
+    zlistx_set_destructor (certs, NULL);
+    return certs;
+}
 
 //  --------------------------------------------------------------------------
 //  Print list of certificates in store to stdout
@@ -291,7 +303,7 @@ s_test_destructor (void **self_p)
     assert (self_p);
     if (*self_p) {
         test_loader_state *self = (test_loader_state *)*self_p;
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -304,12 +316,33 @@ zcertstore_test (bool verbose)
         printf ("\n");
 
     //  @selftest
+
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
+
+    const char *testbasedir  = ".test_zcertstore";
+    const char *testfile = "mycert.txt";
+    char *basedirpath = NULL;   // subdir in a test, under SELFTEST_DIR_RW
+    char *filepath = NULL;      // pathname to testfile in a test, in dirpath
+
+    basedirpath = zsys_sprintf ("%s/%s", SELFTEST_DIR_RW, testbasedir);
+    assert (basedirpath);
+    filepath = zsys_sprintf ("%s/%s", basedirpath, testfile);
+    assert (filepath);
+
+    // Make sure old aborted tests do not hinder us
+    zdir_t *dir = zdir_new (basedirpath, NULL);
+    if (dir) {
+        zdir_remove (dir, true);
+        zdir_destroy (&dir);
+    }
+    zsys_file_delete (filepath);
+    zsys_dir_delete  (basedirpath);
+
     //  Create temporary directory for test files
-#   define TESTDIR ".test_zcertstore"
-    zsys_dir_create (TESTDIR);
+    zsys_dir_create (basedirpath);
 
     //  Load certificate store from disk; it will be empty
-    zcertstore_t *certstore = zcertstore_new (TESTDIR);
+    zcertstore_t *certstore = zcertstore_new (basedirpath);
     assert (certstore);
 
     //  Create a single new certificate and save to disk
@@ -318,13 +351,27 @@ zcertstore_test (bool verbose)
     char *client_key = strdup (zcert_public_txt (cert));
     assert (client_key);
     zcert_set_meta (cert, "name", "John Doe");
-    zcert_save (cert, TESTDIR "/mycert.txt");
+    zcert_save (cert, filepath);
     zcert_destroy (&cert);
 
     //  Check that certificate store refreshes as expected
     cert = zcertstore_lookup (certstore, client_key);
     assert (cert);
     assert (streq (zcert_meta (cert, "name"), "John Doe"));
+
+#ifdef CZMQ_BUILD_DRAFT_API
+    // Iterate through certs
+    zlistx_t *certs = zcertstore_certs(certstore);
+    cert = (zcert_t *) zlistx_first(certs);
+    int cert_count = 0;
+    while (cert) {
+        assert (streq (zcert_meta (cert, "name"), "John Doe"));
+        cert = (zcert_t *) zlistx_next(certs);
+        cert_count++;
+    }
+    assert(cert_count==1);
+    zlistx_destroy(&certs);
+#endif
 
     //  Test custom loader
     test_loader_state *state = (test_loader_state *) zmalloc (sizeof (test_loader_state));
@@ -337,17 +384,24 @@ zcertstore_test (bool verbose)
     assert (cert);
 #endif
 
-    free (client_key);
+    freen (client_key);
 
     if (verbose)
         zcertstore_print (certstore);
     zcertstore_destroy (&certstore);
 
     //  Delete all test files
-    zdir_t *dir = zdir_new (TESTDIR, NULL);
+    dir = zdir_new (basedirpath, NULL);
     assert (dir);
     zdir_remove (dir, true);
     zdir_destroy (&dir);
+
+    zstr_free (&basedirpath);
+    zstr_free (&filepath);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
     printf ("OK\n");
 }

@@ -31,17 +31,76 @@
 */
 
 #include "czmq_classes.h"
+#ifdef HAVE_LIBLZ4
+#include <lz4.h>
+
+static void
+s_free_compress (void *data, void *hint)
+{
+    free (data);
+}
+#endif
 
 static int
-s_send_string (void *dest, bool more, char *string)
+s_send_string (void *dest, bool more, char *string, bool compress)
 {
     assert (dest);
     void *handle = zsock_resolve (dest);
 
     size_t len = strlen (string);
     zmq_msg_t message;
-    zmq_msg_init_size (&message, len);
-    memcpy (zmq_msg_data (&message), string, len);
+
+    if (compress) {
+#ifdef HAVE_LIBLZ4
+        size_t compressed_len = LZ4_compressBound (len);
+        if (compressed_len == 0)
+            return -1;
+
+        char *buffer = (char *)malloc (compressed_len );
+        if (!buffer)
+            return -1;
+
+        //  LZ4_compress has been deprecated in newer versions, but
+        //  the new APIs are not available for older distros
+#if LZ4_VERSION_MAJOR >= 1 && LZ4_VERSION_MINOR >= 7
+        int rc = LZ4_compress_default (string, buffer, len, compressed_len);
+#else
+        int rc = LZ4_compress (string, buffer, len);
+#endif
+        if (rc == 0) {
+            free (buffer);
+            return -1;
+        }
+
+        zmq_msg_t size_frame;
+        zmq_msg_init_size (&size_frame, sizeof (size_t));
+        memcpy (zmq_msg_data (&size_frame), &len, sizeof (size_t));
+
+#if defined (ZMQ_SERVER)
+        //  Set routing ID if we're sending to a SERVER socket (ZMQ 4.2 and later)
+        if (zsock_is (dest) && zsock_type (dest) == ZMQ_SERVER)
+            zmq_msg_set_routing_id (&size_frame, zsock_routing_id ((zsock_t *) dest));
+#endif
+        if (zmq_sendmsg (handle, &size_frame, ZMQ_SNDMORE) == -1) {
+            free (buffer);
+            zmq_msg_close (&size_frame);
+            return -1;
+        }
+
+        //  Optimisation: use zero-copy send. The common use case for
+        //  compressed data is large buffers, so avoiding an extra malloc + copy
+        //  is worth the extra few lines of code
+        rc = zmq_msg_init_data (&message, buffer, rc, s_free_compress, NULL);
+        //  Assert on OOM
+        assert (rc != -1);
+#else
+        return -1;
+#endif
+    } else {
+        int rc = zmq_msg_init_size (&message, len);
+        assert (rc == 0);
+        memcpy (zmq_msg_data (&message), string, len);
+    }
 
 #if defined (ZMQ_SERVER)
     //  Set routing ID if we're sending to a SERVER socket (ZMQ 4.2 and later)
@@ -133,6 +192,61 @@ zstr_recvx (void *source, char **string_p, ...)
 
 
 //  --------------------------------------------------------------------------
+//  De-compress and receive C string from socket, received as a message
+//  with two frames: size of the uncompressed string, and the string itself.
+//  Caller must free returned string using zstr_free(). Returns NULL if the
+//  context is being terminated or the process was interrupted.
+//  Caller owns return value and must destroy it when done.
+
+char *
+zstr_recv_compress (void *source)
+{
+    assert (source);
+#ifndef HAVE_LIBLZ4
+    return NULL;
+#else
+
+    void *handle = zsock_resolve (source);
+
+    zmsg_t *msg = zmsg_recv (handle);
+    if (!msg)
+        return NULL;
+
+#if defined (ZMQ_SERVER)
+    //  Grab routing ID if we're reading from a SERVER socket (ZMQ 4.2 and later)
+    if (zsock_is (source) && zsock_type (source) == ZMQ_SERVER)
+        zsock_set_routing_id ((zsock_t *) source, zmsg_routing_id (msg));
+#endif
+    //  Filter a signal that may come from a dying actor
+    if (zmsg_signal (msg) >= 0) {
+        zmsg_destroy (&msg);
+        return NULL;
+    }
+
+    //  Size and data
+    if (zmsg_size (msg) != 2) {
+        zmsg_destroy (&msg);
+        return NULL;
+    }
+
+    size_t size = *((size_t *)zframe_data (zmsg_first (msg)));
+    char *string = (char *) malloc (size + 1);
+    if (string) {
+        zframe_t *data_frame = zmsg_next (msg);
+        int rc = LZ4_decompress_safe ((char *)zframe_data (data_frame),
+            string, zframe_size (data_frame), size);
+        string [size] = 0;
+        if (rc < 0) {
+            zstr_free (&string);
+        }
+    }
+    zmsg_destroy (&msg);
+    return string;
+#endif
+}
+
+
+//  --------------------------------------------------------------------------
 //  Send a C string to a socket, as a frame. The string is sent without
 //  trailing null byte; to read this you can use zstr_recv, or a similar
 //  method that adds a null terminator on the received string. String
@@ -142,7 +256,7 @@ int
 zstr_send (void *dest, const char *string)
 {
     assert (dest);
-    return s_send_string (dest, false, string? (char *) string: "");
+    return s_send_string (dest, false, string? (char *) string: "", false);
 }
 
 
@@ -156,7 +270,7 @@ zstr_sendm (void *dest, const char *string)
 {
     assert (dest);
     assert (string);
-    return s_send_string (dest, true, (char *) string);
+    return s_send_string (dest, true, (char *) string, false);
 }
 
 
@@ -179,7 +293,7 @@ zstr_sendf (void *dest, const char *format, ...)
 
     va_end (argptr);
 
-    int rc = s_send_string (dest, false, string);
+    int rc = s_send_string (dest, false, string, false);
     zstr_free (&string);
     return rc;
 }
@@ -204,7 +318,7 @@ zstr_sendfm (void *dest, const char *format, ...)
 
     va_end (argptr);
 
-    int rc = s_send_string (dest, true, string);
+    int rc = s_send_string (dest, true, string, false);
     zstr_free (&string);
     return rc;
 }
@@ -233,9 +347,36 @@ zstr_sendx (void *dest, const char *string, ...)
     if (zsock_is (dest) && zsock_type (dest) == ZMQ_SERVER)
         zmsg_set_routing_id (msg, zsock_routing_id ((zsock_t *) dest));
 #endif
-    return zmsg_send (&msg, dest);
+    if (zmsg_send (&msg, dest) < 0) {
+        zmsg_destroy(&msg);
+        return -1;
+    }
+    else
+        return 0;
 }
 
+//  Compress and send a C string to a socket, as a message with two frames:
+//  size of the uncompressed string, and the string itself. The string is
+//  sent without trailing null byte; to read this you can use
+//  zstr_recv_compress, or a similar method that de-compresses and adds a
+//  null terminator on the received string.
+int
+zstr_send_compress (void *dest, const char *string)
+{
+    assert (dest);
+    return s_send_string (dest, false, (char *) string, true);
+}
+
+//  Compress and send a C string to a socket, as zstr_send_compress(),
+//  with a MORE flag, so that you can send further strings in the same
+//  multi-part message.
+int
+zstr_sendm_compress (void *dest, const char *string)
+{
+    assert (dest);
+    assert (string);
+    return s_send_string (dest, true, (char *) string, true);
+}
 
 //  --------------------------------------------------------------------------
 //  Accepts a void pointer and returns a fresh character string. If source is
@@ -327,6 +468,22 @@ zstr_test (bool verbose)
     }
     assert (string_nbr == 15);
 
+#ifdef HAVE_LIBLZ4
+    int ret = zstr_send_compress (output, "loooong");
+    assert (ret == 0);
+    char *string = zstr_recv_compress (input);
+    assert (string);
+    assert (streq (string, "loooong"));
+    zstr_free (&string);
+
+    zstr_send_compress (output, "loooong");
+    assert (ret == 0);
+    zmsg_t *msg = zmsg_recv (input);
+    assert (msg);
+    assert (*((size_t *)zframe_data (zmsg_first (msg))) == strlen ("loooong"));
+    zmsg_destroy (&msg);
+#endif
+
     zsock_destroy (&input);
     zsock_destroy (&output);
 
@@ -343,19 +500,19 @@ zstr_test (bool verbose)
     char *request = zstr_recv (server);
     assert (streq (request, "Hello"));
     assert (zsock_routing_id (server));
-    free (request);
+    freen (request);
 
     rc = zstr_send (server, "World");
     assert (rc == 0);
     char *reply = zstr_recv (client);
     assert (streq (reply, "World"));
-    free (reply);
+    freen (reply);
 
     rc = zstr_sendf (server, "%s", "World");
     assert (rc == 0);
     reply = zstr_recv (client);
     assert (streq (reply, "World"));
-    free (reply);
+    freen (reply);
 
     //  Try ping-pong using sendx and recx
     rc = zstr_sendx (client, "Hello", NULL);
@@ -363,14 +520,14 @@ zstr_test (bool verbose)
     rc = zstr_recvx (server, &request, NULL);
     assert (rc >= 0);
     assert (streq (request, "Hello"));
-    free (request);
+    freen (request);
 
     rc = zstr_sendx (server, "World", NULL);
     assert (rc == 0);
     rc = zstr_recvx (client, &reply, NULL);
     assert (rc >= 0);
     assert (streq (reply, "World"));
-    free (reply);
+    freen (reply);
 
     //  Client and server disallow multipart
     rc = zstr_sendm (client, "Hello");
@@ -380,6 +537,10 @@ zstr_test (bool verbose)
 
     zsock_destroy (&client);
     zsock_destroy (&server);
+#endif
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
 #endif
     //  @end
 

@@ -30,6 +30,13 @@ QZcert* QZcert::newFrom (const byte *publicKey, const byte *secretKey, QObject *
 }
 
 ///
+//  Accepts public/secret key text pair from caller
+QZcert* QZcert::newFromTxt (const QString &publicTxt, const QString &secretTxt, QObject *qObjParent)
+{
+    return new QZcert (zcert_new_from_txt (publicTxt.toUtf8().data(), secretTxt.toUtf8().data()), qObjParent);
+}
+
+///
 //  Load certificate from file
 QZcert* QZcert::load (const QString &filename, QObject *qObjParent)
 {
@@ -80,7 +87,7 @@ const QString QZcert::secretTxt ()
 void QZcert::setMeta (const QString &name, const QString &param)
 {
     zcert_set_meta (self, name.toUtf8().data(), "%s", param.toUtf8().data());
-    
+
 }
 
 ///
@@ -88,12 +95,12 @@ void QZcert::setMeta (const QString &name, const QString &param)
 void QZcert::unsetMeta (const QString &name)
 {
     zcert_unset_meta (self, name.toUtf8().data());
-    
+
 }
 
 ///
 //  Get metadata value from certificate; if the metadata value doesn't
-//  exist, returns NULL.                                              
+//  exist, returns NULL.
 const QString QZcert::meta (const QString &name)
 {
     const QString rv = QString (zcert_meta (self, name.toUtf8().data()));
@@ -102,7 +109,7 @@ const QString QZcert::meta (const QString &name)
 
 ///
 //  Get list of metadata fields from certificate. Caller is responsible for
-//  destroying list. Caller should not modify the values of list items.    
+//  destroying list. Caller should not modify the values of list items.
 QZlist * QZcert::metaKeys ()
 {
     QZlist *rv = new QZlist (zcert_meta_keys (self));
@@ -110,7 +117,7 @@ QZlist * QZcert::metaKeys ()
 }
 
 ///
-//  Save full certificate (public + secret) to file for persistent storage  
+//  Save full certificate (public + secret) to file for persistent storage
 //  This creates one public file and one secret file (filename + "_secret").
 int QZcert::save (const QString &filename)
 {
@@ -136,17 +143,17 @@ int QZcert::saveSecret (const QString &filename)
 
 ///
 //  Apply certificate to socket, i.e. use for CURVE security on socket.
-//  If certificate was loaded from public file, the secret key will be 
-//  undefined, and this certificate will not work successfully.        
+//  If certificate was loaded from public file, the secret key will be
+//  undefined, and this certificate will not work successfully.
 void QZcert::apply (void *socket)
 {
     zcert_apply (self, socket);
-    
+
 }
 
 ///
 //  Return copy of certificate; if certificate is NULL or we exhausted
-//  heap memory, returns NULL.                                        
+//  heap memory, returns NULL.
 QZcert * QZcert::dup ()
 {
     QZcert *rv = new QZcert (zcert_dup (self));
@@ -166,7 +173,7 @@ bool QZcert::eq (QZcert *compare)
 void QZcert::print ()
 {
     zcert_print (self);
-    
+
 }
 
 ///
@@ -174,7 +181,7 @@ void QZcert::print ()
 void QZcert::test (bool verbose)
 {
     zcert_test (verbose);
-    
+
 }
 /*
 ################################################################################

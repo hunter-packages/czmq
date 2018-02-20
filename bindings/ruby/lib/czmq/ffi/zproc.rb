@@ -30,12 +30,13 @@ module CZMQ
           ObjectSpace.define_finalizer self, @finalizer
         end
       end
+      # @param ptr [::FFI::Pointer]
       # @return [Proc]
       def self.create_finalizer_for(ptr)
         Proc.new do
-          "WARNING: "\
-          "Objects of type #{self} cannot be destroyed implicitly. "\
-          "Please call the correct destroy method with the relevant arguments."
+          ptr_ptr = ::FFI::MemoryPointer.new :pointer
+          ptr_ptr.write_pointer ptr
+          ::CZMQ::FFI.zproc_destroy ptr_ptr
         end
       end
       # @return [Boolean]
@@ -72,8 +73,210 @@ module CZMQ
         @finalizer = nil
       end
 
+      # Create a new zproc.
+      # NOTE: On Windows and with libzmq3 and libzmq2 this function
+      # returns NULL. Code needs to be ported there.
+      # @return [CZMQ::Zproc]
+      def self.new()
+        ptr = ::CZMQ::FFI.zproc_new()
+        __new ptr
+      end
+
+      # Destroy zproc, wait until process ends.
+      #
+      # @return [void]
+      def destroy()
+        return unless @ptr
+        self_p = __ptr_give_ref
+        result = ::CZMQ::FFI.zproc_destroy(self_p)
+        result
+      end
+
+      # Setup the command line arguments, the first item must be an (absolute) filename
+      # to run.
+      #
+      # @param args [Zlistx, #__ptr]
+      # @return [void]
+      def set_args(args)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        args = args.__ptr if args
+        result = ::CZMQ::FFI.zproc_set_args(self_p, args)
+        result
+      end
+
+      # Setup the environment variables for the process.
+      #
+      # @param args [Zhashx, #__ptr]
+      # @return [void]
+      def set_env(args)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        args = args.__ptr if args
+        result = ::CZMQ::FFI.zproc_set_env(self_p, args)
+        result
+      end
+
+      # Connects process stdin with a readable ('>', connect) zeromq socket. If
+      # socket argument is NULL, zproc creates own managed pair of inproc
+      # sockets.  The writable one is then accessbile via zproc_stdin method.
+      #
+      # @param socket [::FFI::Pointer, #to_ptr]
+      # @return [void]
+      def set_stdin(socket)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_set_stdin(self_p, socket)
+        result
+      end
+
+      # Connects process stdout with a writable ('@', bind) zeromq socket. If
+      # socket argument is NULL, zproc creates own managed pair of inproc
+      # sockets.  The readable one is then accessbile via zproc_stdout method.
+      #
+      # @param socket [::FFI::Pointer, #to_ptr]
+      # @return [void]
+      def set_stdout(socket)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_set_stdout(self_p, socket)
+        result
+      end
+
+      # Connects process stderr with a writable ('@', bind) zeromq socket. If
+      # socket argument is NULL, zproc creates own managed pair of inproc
+      # sockets.  The readable one is then accessbile via zproc_stderr method.
+      #
+      # @param socket [::FFI::Pointer, #to_ptr]
+      # @return [void]
+      def set_stderr(socket)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_set_stderr(self_p, socket)
+        result
+      end
+
+      # Return subprocess stdin writable socket. NULL for
+      # not initialized or external sockets.
+      #
+      # @return [::FFI::Pointer]
+      def stdin()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_stdin(self_p)
+        result
+      end
+
+      # Return subprocess stdout readable socket. NULL for
+      # not initialized or external sockets.
+      #
+      # @return [::FFI::Pointer]
+      def stdout()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_stdout(self_p)
+        result
+      end
+
+      # Return subprocess stderr readable socket. NULL for
+      # not initialized or external sockets.
+      #
+      # @return [::FFI::Pointer]
+      def stderr()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_stderr(self_p)
+        result
+      end
+
+      # Starts the process.
+      #
+      # @return [Integer]
+      def run()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_run(self_p)
+        result
+      end
+
+      # process exit code
+      #
+      # @return [Integer]
+      def returncode()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_returncode(self_p)
+        result
+      end
+
+      # PID of the process
+      #
+      # @return [Integer]
+      def pid()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_pid(self_p)
+        result
+      end
+
+      # return true if process is running, false if not yet started or finished
+      #
+      # @return [Boolean]
+      def running()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_running(self_p)
+        result
+      end
+
+      # wait or poll process status, return return code
+      #
+      # @param hang [Boolean]
+      # @return [Integer]
+      def wait(hang)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        hang = !(0==hang||!hang) # boolean
+        result = ::CZMQ::FFI.zproc_wait(self_p, hang)
+        result
+      end
+
+      # return internal actor, usefull for the polling if process died
+      #
+      # @return [::FFI::Pointer]
+      def actor()
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zproc_actor(self_p)
+        result
+      end
+
+      # send a signal to the subprocess
+      #
+      # @param signal [Integer, #to_int, #to_i]
+      # @return [void]
+      def kill(signal)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        signal = Integer(signal)
+        result = ::CZMQ::FFI.zproc_kill(self_p, signal)
+        result
+      end
+
+      # set verbose mode
+      #
+      # @param verbose [Boolean]
+      # @return [void]
+      def set_verbose(verbose)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        verbose = !(0==verbose||!verbose) # boolean
+        result = ::CZMQ::FFI.zproc_set_verbose(self_p, verbose)
+        result
+      end
+
       # Returns CZMQ version as a single 6-digit integer encoding the major
-      # version (x 10000), the minor version (x 100) and the patch.        
+      # version (x 10000), the minor version (x 100) and the patch.
       #
       # @return [Integer]
       def self.czmq_version()
@@ -83,7 +286,7 @@ module CZMQ
 
       # Returns true if the process received a SIGINT or SIGTERM signal.
       # It is good practice to use this method to exit any infinite loop
-      # processing messages.                                            
+      # processing messages.
       #
       # @return [Boolean]
       def self.interrupted()
@@ -100,7 +303,7 @@ module CZMQ
       end
 
       # Return current host name, for use in public tcp:// endpoints.
-      # If the host name is not resolvable, returns NULL.            
+      # If the host name is not resolvable, returns NULL.
       #
       # @return [::FFI::AutoPointer]
       def self.hostname()
@@ -109,12 +312,12 @@ module CZMQ
         result
       end
 
-      # Move the current process into the background. The precise effect     
+      # Move the current process into the background. The precise effect
       # depends on the operating system. On POSIX boxes, moves to a specified
-      # working directory (if specified), closes all file handles, reopens   
+      # working directory (if specified), closes all file handles, reopens
       # stdin, stdout, and stderr to the null device, and sets the process to
       # ignore SIGHUP. On Windows, does nothing. Returns 0 if OK, -1 if there
-      # was an error.                                                        
+      # was an error.
       #
       # @param workdir [String, #to_s, nil]
       # @return [void]
@@ -123,12 +326,12 @@ module CZMQ
         result
       end
 
-      # Drop the process ID into the lockfile, with exclusive lock, and   
-      # switch the process to the specified group and/or user. Any of the 
-      # arguments may be null, indicating a no-op. Returns 0 on success,  
-      # -1 on failure. Note if you combine this with zsys_daemonize, run  
+      # Drop the process ID into the lockfile, with exclusive lock, and
+      # switch the process to the specified group and/or user. Any of the
+      # arguments may be null, indicating a no-op. Returns 0 on success,
+      # -1 on failure. Note if you combine this with zsys_daemonize, run
       # after, not before that method, or the lockfile will hold the wrong
-      # process ID.                                                       
+      # process ID.
       #
       # @param lockfile [String, #to_s, nil]
       # @param group [String, #to_s, nil]
@@ -139,11 +342,11 @@ module CZMQ
         result
       end
 
-      # Configure the number of I/O threads that ZeroMQ will use. A good  
-      # rule of thumb is one thread per gigabit of traffic in or out. The 
+      # Configure the number of I/O threads that ZeroMQ will use. A good
+      # rule of thumb is one thread per gigabit of traffic in or out. The
       # default is 1, sufficient for most applications. If the environment
-      # variable ZSYS_IO_THREADS is defined, that provides the default.   
-      # Note that this method is valid only before any socket is created. 
+      # variable ZSYS_IO_THREADS is defined, that provides the default.
+      # Note that this method is valid only before any socket is created.
       #
       # @param io_threads [Integer, #to_int, #to_i]
       # @return [void]
@@ -153,10 +356,10 @@ module CZMQ
         result
       end
 
-      # Configure the number of sockets that ZeroMQ will allow. The default  
+      # Configure the number of sockets that ZeroMQ will allow. The default
       # is 1024. The actual limit depends on the system, and you can query it
-      # by using zsys_socket_limit (). A value of zero means "maximum".      
-      # Note that this method is valid only before any socket is created.    
+      # by using zsys_socket_limit (). A value of zero means "maximum".
+      # Note that this method is valid only before any socket is created.
       #
       # @param max_sockets [Integer, #to_int, #to_i]
       # @return [void]
@@ -166,12 +369,12 @@ module CZMQ
         result
       end
 
-      # Set network interface name to use for broadcasts, particularly zbeacon.    
+      # Set network interface name to use for broadcasts, particularly zbeacon.
       # This lets the interface be configured for test environments where required.
-      # For example, on Mac OS X, zbeacon cannot bind to 255.255.255.255 which is  
-      # the default when there is no specified interface. If the environment       
-      # variable ZSYS_INTERFACE is set, use that as the default interface name.    
-      # Setting the interface to "*" means "use all available interfaces".         
+      # For example, on Mac OS X, zbeacon cannot bind to 255.255.255.255 which is
+      # the default when there is no specified interface. If the environment
+      # variable ZSYS_INTERFACE is set, use that as the default interface name.
+      # Setting the interface to "*" means "use all available interfaces".
       #
       # @param value [String, #to_s, nil]
       # @return [void]
@@ -189,8 +392,8 @@ module CZMQ
       end
 
       # Set log identity, which is a string that prefixes all log messages sent
-      # by this process. The log identity defaults to the environment variable 
-      # ZSYS_LOGIDENT, if that is set.                                         
+      # by this process. The log identity defaults to the environment variable
+      # ZSYS_LOGIDENT, if that is set.
       #
       # @param value [String, #to_s, nil]
       # @return [void]
@@ -199,13 +402,13 @@ module CZMQ
         result
       end
 
-      # Sends log output to a PUB socket bound to the specified endpoint. To   
-      # collect such log output, create a SUB socket, subscribe to the traffic 
-      # you care about, and connect to the endpoint. Log traffic is sent as a  
-      # single string frame, in the same format as when sent to stdout. The    
+      # Sends log output to a PUB socket bound to the specified endpoint. To
+      # collect such log output, create a SUB socket, subscribe to the traffic
+      # you care about, and connect to the endpoint. Log traffic is sent as a
+      # single string frame, in the same format as when sent to stdout. The
       # log system supports a single sender; multiple calls to this method will
       # bind the same sender to multiple endpoints. To disable the sender, call
-      # this method with a null argument.                                      
+      # this method with a null argument.
       #
       # @param endpoint [String, #to_s, nil]
       # @return [void]
@@ -215,7 +418,7 @@ module CZMQ
       end
 
       # Enable or disable logging to the system facility (syslog on POSIX boxes,
-      # event log on Windows). By default this is disabled.                     
+      # event log on Windows). By default this is disabled.
       #
       # @param logsystem [Boolean]
       # @return [void]

@@ -81,7 +81,7 @@ s_self_destroy (self_t **self_p)
             zstr_free (&self->public_key [index]);
             zstr_free (&self->secret_key [index]);
         }
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -421,8 +421,9 @@ s_get_available_port (void)
 }
 
 //  Checks whether client can connect to server
+//  expect_success is used to synchronise the connect as sleeps are unreliable
 static bool
-s_can_connect (zactor_t **proxy, zsock_t **faucet, zsock_t **sink, const char *frontend, const char *backend, bool verbose)
+s_can_connect (zactor_t **proxy, zsock_t **faucet, zsock_t **sink, const char *frontend, const char *backend, bool verbose, bool expect_success)
 {
     assert (*faucet);
     assert (*sink);
@@ -433,11 +434,19 @@ s_can_connect (zactor_t **proxy, zsock_t **faucet, zsock_t **sink, const char *f
     assert (rc == 0);
     rc = zsock_connect (*sink, "%s", backend);
     assert (rc == 0);
-    zstr_send (*faucet, "Hello, World");
-    if (zsock_mechanism (*faucet) == ZMQ_CURVE)
-        zclock_sleep (3000);
-    else
-        zclock_sleep (200);
+    if (expect_success) {
+        zstr_send (*faucet, "Hello, World");
+        char *hello = zstr_recv (*sink);
+        assert (hello);
+        assert (streq (hello, "Hello, World"));
+        zstr_free (&hello);
+    }
+    zframe_t *frame = zframe_from ("Hello, World");
+    rc = zframe_send (&frame, *faucet, expect_success ? 0 : ZFRAME_DONTWAIT);
+    assert (rc == 0 || !expect_success);
+    if (!expect_success && rc == -1)
+        zframe_destroy (&frame);
+
     zpoller_t *poller = zpoller_new (*sink, NULL);
     assert (poller);
     bool success = (zpoller_wait (poller, 400) == *sink);
@@ -547,10 +556,26 @@ zproxy_test (bool verbose)
     proxy = zactor_new (zproxy, NULL);
     assert (proxy);
 
-    sink = zsock_new_sub (">ipc://backend", "whatever");
-    assert (sink);
+#ifdef  WIN32
+	sink = zsock_new_sub(">inproc://backend", "whatever");
+#else
+    // vagrant vms don't like using shared storage for ipc pipes..
+    if (streq(getenv("USER"), "vagrant"))
+        sink = zsock_new_sub (">ipc:///tmp/backend", "whatever");
+    else
+	    sink = zsock_new_sub (">ipc://backend", "whatever");
+#endif //  WIN32
+	assert (sink);
 
-    zstr_sendx (proxy, "BACKEND", "XPUB", "ipc://backend", NULL);
+#ifdef WIN32
+	zstr_sendx (proxy, "BACKEND", "XPUB", "inproc://backend", NULL);
+#else
+    // vagrant vms don't like using shared storage for ipc pipes..
+    if (streq(getenv("USER"), "vagrant"))
+        zstr_sendx(proxy, "BACKEND", "XPUB", "ipc:///tmp/backend", NULL);
+    else
+        zstr_sendx(proxy, "BACKEND", "XPUB", "ipc://backend", NULL);
+#endif
     zsock_wait (proxy);
 
     zsock_destroy(&sink);
@@ -558,10 +583,22 @@ zproxy_test (bool verbose)
 
 #if (ZMQ_VERSION_MAJOR == 4)
     // Test authentication functionality
-#   define TESTDIR ".test_zproxy"
+    const char *basedirpath = "src/selftest-rw/.test_zproxy";
+    const char *passfilepath = "src/selftest-rw/.test_zproxy/password-file";
+    const char *certfilepath = "src/selftest-rw/.test_zproxy/mycert.txt";
+
+    // Make sure old aborted tests do not hinder us
+    zdir_t *dir = zdir_new (basedirpath, NULL);
+    if (dir) {
+        zdir_remove (dir, true);
+        zdir_destroy (&dir);
+    }
+    zsys_file_delete (passfilepath);
+    zsys_file_delete (certfilepath);
+    zsys_dir_delete (basedirpath);
 
     //  Create temporary directory for test files
-    zsys_dir_create (TESTDIR);
+    zsys_dir_create (basedirpath);
 
     char *frontend = NULL;
     char *backend = NULL;
@@ -569,7 +606,8 @@ zproxy_test (bool verbose)
     //  Check there's no authentication
     s_create_test_sockets (&proxy, &faucet, &sink, verbose);
     s_bind_test_sockets (proxy, &frontend, &backend);
-    bool success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    bool success = s_can_connect (&proxy, &faucet, &sink, frontend, backend,
+        verbose, true);
     assert (success);
 
     //  Install the authenticator
@@ -582,7 +620,8 @@ zproxy_test (bool verbose)
 
     //  Check there's no authentication on a default NULL server
     s_bind_test_sockets (proxy, &frontend, &backend);
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        true);
     assert (success);
 
     //  When we set a domain on the server, we switch on authentication
@@ -591,7 +630,8 @@ zproxy_test (bool verbose)
     zstr_sendx (proxy, "DOMAIN", "FRONTEND", "global", NULL);
     zsock_wait (proxy);
     s_bind_test_sockets (proxy, &frontend, &backend);
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        true);
     assert (success);
 
     //  Blacklist 127.0.0.1, connection should fail
@@ -600,7 +640,8 @@ zproxy_test (bool verbose)
     s_bind_test_sockets (proxy, &frontend, &backend);
     zstr_sendx (auth, "DENY", "127.0.0.1", NULL);
     zsock_wait (auth);
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        false);
     assert (!success);
 
     //  Whitelist our address, which overrides the blacklist
@@ -611,7 +652,8 @@ zproxy_test (bool verbose)
     s_bind_test_sockets (proxy, &frontend, &backend);
     zstr_sendx (auth, "ALLOW", "127.0.0.1", NULL);
     zsock_wait (auth);
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        true);
     assert (success);
 
     //  Try PLAIN authentication
@@ -619,38 +661,49 @@ zproxy_test (bool verbose)
     //  Test negative case (no server-side passwords defined)
     zstr_sendx (proxy, "PLAIN", "FRONTEND", NULL);
     zsock_wait (proxy);
+    zstr_sendx (proxy, "DOMAIN", "FRONTEND", "global", NULL);
+    zsock_wait (proxy);
     s_bind_test_sockets (proxy, &frontend, &backend);
     zsock_set_plain_username (faucet, "admin");
     zsock_set_plain_password (faucet, "Password");
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        false);
     assert (!success);
 
     //  Test positive case (server-side passwords defined)
-    FILE *password = fopen (TESTDIR "/password-file", "w");
+    FILE *password = fopen (passfilepath, "w");
     assert (password);
     fprintf (password, "admin=Password\n");
     fclose (password);
     zstr_sendx (proxy, "PLAIN", "FRONTEND", NULL);
     zsock_wait (proxy);
+    zstr_sendx (proxy, "DOMAIN", "FRONTEND", "global", NULL);
+    zsock_wait (proxy);
     zstr_sendx (proxy, "PLAIN", "BACKEND", NULL);
+    zsock_wait (proxy);
+    zstr_sendx (proxy, "DOMAIN", "BACKEND", "global", NULL);
     zsock_wait (proxy);
     s_bind_test_sockets (proxy, &frontend, &backend);
     zsock_set_plain_username (faucet, "admin");
     zsock_set_plain_password (faucet, "Password");
     zsock_set_plain_username (sink, "admin");
     zsock_set_plain_password (sink, "Password");
-    zstr_sendx (auth, "PLAIN", TESTDIR "/password-file", NULL);
+    zstr_sendx (auth, "PLAIN", passfilepath, NULL);
     zsock_wait (auth);
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        true);
     assert (success);
 
     //  Test negative case (bad client password)
     zstr_sendx (proxy, "PLAIN", "FRONTEND", NULL);
     zsock_wait (proxy);
+    zstr_sendx (proxy, "DOMAIN", "FRONTEND", "global", NULL);
+    zsock_wait (proxy);
     s_bind_test_sockets (proxy, &frontend, &backend);
     zsock_set_plain_username (faucet, "admin");
     zsock_set_plain_password (faucet, "Bogus");
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        false);
     assert (!success);
 
     if (zsys_has_curve ()) {
@@ -668,10 +721,13 @@ zproxy_test (bool verbose)
         //  Test without setting-up any authentication
         zstr_sendx (proxy, "CURVE", "FRONTEND", public_key, secret_key, NULL);
         zsock_wait (proxy);
+        zstr_sendx (proxy, "DOMAIN", "FRONTEND", "global", NULL);
+        zsock_wait (proxy);
         s_bind_test_sockets (proxy, &frontend, &backend);
         zcert_apply (client_cert, faucet);
         zsock_set_curve_serverkey (faucet, public_key);
-        success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+        success = s_can_connect (&proxy, &faucet, &sink, frontend, backend,
+            verbose, false);
         assert (!success);
 
         //  Test CURVE_ALLOW_ANY
@@ -682,7 +738,8 @@ zproxy_test (bool verbose)
         zsock_set_curve_serverkey (faucet, public_key);
         zstr_sendx (auth, "CURVE", CURVE_ALLOW_ANY, NULL);
         zsock_wait (auth);
-        success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+        success = s_can_connect (&proxy, &faucet, &sink, frontend, backend,
+            verbose, true);
         assert (success);
 
         //  Test with client certificate file in authentication folder
@@ -695,10 +752,11 @@ zproxy_test (bool verbose)
         zsock_set_curve_serverkey (faucet, public_key);
         zcert_apply (client_cert, sink);
         zsock_set_curve_serverkey (sink, public_key);
-        zcert_save_public (client_cert, TESTDIR "/mycert.txt");
-        zstr_sendx (auth, "CURVE", TESTDIR, NULL);
+        zcert_save_public (client_cert, certfilepath);
+        zstr_sendx (auth, "CURVE", basedirpath, NULL);
         zsock_wait (auth);
-        success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+        success = s_can_connect (&proxy, &faucet, &sink, frontend, backend,
+            verbose, true);
         assert (success);
 
         zcert_destroy (&server_cert);
@@ -708,7 +766,8 @@ zproxy_test (bool verbose)
     //  Remove the authenticator and check a normal connection works
     zactor_destroy (&auth);
     s_bind_test_sockets (proxy, &frontend, &backend);
-    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose);
+    success = s_can_connect (&proxy, &faucet, &sink, frontend, backend, verbose,
+        true);
     assert (success);
 
     //  Cleanup
@@ -719,9 +778,13 @@ zproxy_test (bool verbose)
     zstr_free (&backend);
 
     //  Delete temporary directory and test files
-    zsys_file_delete (TESTDIR "/password-file");
-    zsys_file_delete (TESTDIR "/mycert.txt");
-    zsys_dir_delete (TESTDIR);
+    zsys_file_delete (passfilepath);
+    zsys_file_delete (certfilepath);
+    zsys_dir_delete (basedirpath);
+#endif
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
 #endif
     //  @end
     printf ("OK\n");

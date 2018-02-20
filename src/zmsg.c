@@ -67,7 +67,7 @@ zmsg_destroy (zmsg_t **self_p)
             zframe_destroy (&frame);
         zlist_destroy (&self->frames);
         self->tag = 0xDeadBeef;
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -501,8 +501,17 @@ zmsg_remove (zmsg_t *self, zframe_t *frame)
     assert (self);
     assert (zmsg_is (self));
 
-    self->content_size -= zframe_size (frame);
+    //  zlist_remove does not give feedback on whether an element was actually
+    //  removed or not. To avoid wrongly decreasing the size in case the frame
+    //  is not actually part of the zmsg, check the size before and after.
+    //  We could do a search but that's a full scan, while the size is saved
+    //  by zlist so checking it is much cheaper.
+    size_t num_frames_before = zlist_size (self->frames);
     zlist_remove (self->frames, frame);
+    size_t num_frames_after = zlist_size (self->frames);
+
+    if (num_frames_before > num_frames_after)
+        self->content_size -= zframe_size (frame);
 }
 
 
@@ -849,9 +858,18 @@ zmsg_recv_nowait (void *source)
     while (true) {
         zframe_t *frame = zframe_recv_nowait (source);
         if (!frame) {
-            zmsg_destroy (&self);
-            break;              //  Interrupted or terminated
+            if (errno == EINTR && zlist_head (self->frames))
+                continue;
+            else {
+                zmsg_destroy (&self);
+                break;              //  Interrupted or terminated
+            }
         }
+#if defined (ZMQ_SERVER)
+        //  Grab routing ID if we're reading from a SERVER socket (ZMQ 4.2 and later)
+        if (zsock_type (source) == ZMQ_SERVER)
+            self->routing_id = zframe_routing_id (frame);
+#endif
         if (zmsg_append (self, &frame)) {
             zmsg_destroy (&self);
             break;
@@ -1059,7 +1077,7 @@ zmsg_test (bool verbose)
     assert (zmsg_size (msg) == 3);
     char *body = zmsg_popstr (msg);
     assert (streq (body, "Frame0"));
-    free (body);
+    freen (body);
     zmsg_destroy (&msg);
 
     //  Test encoding/decoding
@@ -1085,7 +1103,7 @@ zmsg_test (bool verbose)
     assert (rc == 0);
     rc = zmsg_addmem (msg, blank, 65537);
     assert (rc == 0);
-    free (blank);
+    freen (blank);
     assert (zmsg_size (msg) == 9);
     frame = zmsg_encode (msg);
     zmsg_destroy (&msg);
@@ -1109,7 +1127,7 @@ zmsg_test (bool verbose)
     assert (submsg);
     body = zmsg_popstr (submsg);
     assert (streq (body, "joska"));
-    free (body);
+    freen (body);
     zmsg_destroy (&submsg);
     frame = zmsg_pop (msg);
     assert (frame == NULL);
@@ -1217,6 +1235,24 @@ zmsg_test (bool verbose)
     zsock_destroy (&client);
     zsock_destroy (&server);
 #endif
+
+    //  Test message length calculation after removal
+    msg = zmsg_new ();
+    zmsg_addstr (msg, "One");
+    zmsg_addstr (msg, "Two");
+    size_t size_before = zmsg_content_size (msg);
+    frame = zframe_new ("Three", strlen ("Three"));
+    assert (frame);
+    zmsg_remove (msg, frame);
+    size_t size_after = zmsg_content_size (msg);
+    assert (size_before == size_after);
+    zframe_destroy (&frame);
+    zmsg_destroy (&msg);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
+
     //  @end
     printf ("OK\n");
 }

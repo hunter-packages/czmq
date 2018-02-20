@@ -43,6 +43,126 @@ cd czmq/bindings/nodejs
 
 This is a wrapping of the native C libczmq library. See binding.cc for the code.
 
+### The Zargs class - Platform independent command line argument parsing helpers
+
+There are two kind of elements provided by this class
+foo --named-parameter --parameter with_value positional arguments -a gain-parameter
+zargs keeps poision only for arguments, parameters are to be accessed like hash.
+
+It DOES:
+* provide easy to use CLASS compatible API for accessing argv
+* is platform independent
+* provide getopt_long style -- argument, which delimits parameters from arguments
+* makes parameters positon independent
+
+It does NOT
+* change argv
+* provide a "declarative" way to define command line interface
+
+In future it SHALL
+* hide several formats of command line to one (-Idir, --include=dir,
+  --include dir are the same from API pov)
+
+Constructor:
+
+```
+var czmq = require ('bindings')('czmq')
+var my_zargs = new czmq.Zargs (Number, String)
+```
+
+You *must* call the destructor on every Zargs instance:
+
+```
+my_zargs.destroy ()
+```
+
+Methods:
+
+```
+string my_zargs.progname ()
+```
+
+Return program name (argv[0])
+
+```
+size my_zargs.arguments ()
+```
+
+Return number of positional arguments
+
+```
+string my_zargs.first ()
+```
+
+Return first positional argument or NULL
+
+```
+string my_zargs.next ()
+```
+
+Return next positional argument or NULL
+
+```
+string my_zargs.paramFirst ()
+```
+
+Return first named parameter value, or NULL if there are no named
+parameters, or value for which zargs_param_empty (arg) returns true.
+
+```
+string my_zargs.paramNext ()
+```
+
+Return next named parameter value, or NULL if there are no named
+parameters, or value for which zargs_param_empty (arg) returns true.
+
+```
+string my_zargs.paramName ()
+```
+
+Return current parameter name, or NULL if there are no named
+parameters.
+
+```
+string my_zargs.paramLookup (String)
+```
+
+Return value of named parameter, NULL if no given parameter has
+been specified, or special value for wich zargs_param_empty ()
+returns true.
+
+```
+string my_zargs.paramLookupx (String)
+```
+
+Return value of named parameter(s), NULL if no given parameter has
+been specified, or special value for wich zargs_param_empty ()
+returns true.
+
+```
+boolean my_zargs.hasHelp ()
+```
+
+Returns true if there are --help -h arguments
+
+```
+boolean my_zargs.paramEmpty (String)
+```
+
+Returns true if parameter did not have a value
+
+```
+nothing my_zargs.print ()
+```
+
+Print an instance of zargs.
+
+```
+nothing my_zargs.test (Boolean)
+```
+
+Self test of this class.
+
 ### The Zarmour class - armoured text encoding and decoding
 
 Constructor:
@@ -317,6 +437,15 @@ nothing my_zcertstore.print ()
 ```
 
 Print list of certificates in store to logging facility
+
+```
+zlistx my_zcertstore.certs ()
+```
+
+Return a list of all the certificates in the store.
+The caller takes ownership of the zlistx_t object and is responsible
+for destroying it.  The caller does not take ownership of the zcert_t
+objects.
 
 ```
 nothing my_zcertstore.test (Boolean)
@@ -684,6 +813,18 @@ boolean my_zconfig.hasChanged ()
 
 Return true if a configuration tree was loaded from a file and that
 file has changed in since the tree was loaded.
+
+```
+nothing my_zconfig.removeSubtree ()
+```
+
+Destroy subtree (all children)
+
+```
+nothing my_zconfig.remove (Zconfig)
+```
+
+Destroy node and subtree (all children)
 
 ```
 nothing my_zconfig.print ()
@@ -1108,7 +1249,8 @@ string my_zframe.meta (String)
 ```
 
 Return meta data property for frame
-Caller must free string when finished with it.
+The caller shall not modify or free the returned value, which shall be
+owned by the message.
 
 ```
 zframe my_zframe.dup ()
@@ -1321,14 +1463,15 @@ integer my_zhash.refresh ()
 
 When a hash table was loaded from a file by zhash_load, this method will
 reload the file if it has been modified since, and is "stable", i.e. not
-still changing. Returns 0 if OK, -1 if there was an error reloading the 
+still changing. Returns 0 if OK, -1 if there was an error reloading the
 file.
 
 ```
 nothing my_zhash.autofree ()
 ```
 
-Set hash for automatic value destruction
+Set hash for automatic value destruction. Note that this assumes that
+values are NULL-terminated strings. Do not use with different types.
 
 ```
 nothing my_zhash.test (Boolean)
@@ -1530,6 +1673,25 @@ nothing my_ziflist.print ()
 ```
 
 Return the list of interfaces.
+
+```
+ziflist my_ziflist.newIpv6 ()
+```
+
+Get a list of network interfaces currently defined on the system
+Includes IPv6 interfaces
+
+```
+nothing my_ziflist.reloadIpv6 ()
+```
+
+Reload network interfaces from system, including IPv6
+
+```
+boolean my_ziflist.isIpv6 ()
+```
+
+Return true if the current interface uses IPv6
 
 ```
 nothing my_ziflist.test (Boolean)
@@ -2015,7 +2177,68 @@ var czmq = require ('bindings')('czmq')
 var my_zproc = new czmq.Zproc ()
 ```
 
+You *must* call the destructor on every Zproc instance:
+
+```
+my_zproc.destroy ()
+```
+
 Methods:
+
+```
+nothing my_zproc.setArgs (Zlistx)
+```
+
+Setup the command line arguments, the first item must be an (absolute) filename
+to run.
+
+```
+nothing my_zproc.setEnv (Zhashx)
+```
+
+Setup the environment variables for the process.
+
+```
+integer my_zproc.run ()
+```
+
+Starts the process.
+
+```
+integer my_zproc.returncode ()
+```
+
+process exit code
+
+```
+integer my_zproc.pid ()
+```
+
+PID of the process
+
+```
+boolean my_zproc.running ()
+```
+
+return true if process is running, false if not yet started or finished
+
+```
+integer my_zproc.wait (Boolean)
+```
+
+wait or poll process status, return return code
+
+```
+nothing my_zproc.kill (Number)
+```
+
+send a signal to the subprocess
+
+```
+nothing my_zproc.setVerbose (Boolean)
+```
+
+set verbose mode
 
 ```
 integer my_zproc.czmqVersion ()
@@ -2353,10 +2576,16 @@ reduce memory allocations. The pattern argument is a string that defines
 the type of each argument. See zsock_bsend for the supported argument
 types. All arguments must be pointers; this call sets them to point to
 values held on a per-socket basis.
-Note that zsock_brecv creates the returned objects, and the caller must
-destroy them when finished with them. The supplied pointers do not need
-to be initialized. Returns 0 if successful, or -1 if it failed to read
-a message.
+For types 1, 2, 4 and 8 the caller must allocate the memory itself before
+calling zsock_brecv.
+For types S, the caller must free the value once finished with it, as
+zsock_brecv will allocate the buffer.
+For type s, the caller must not free the value as it is stored in a
+local cache for performance purposes.
+For types c, f, u and m the caller must call the appropriate destructor
+depending on the object as zsock_brecv will create new objects.
+For type p the caller must coordinate with the sender, as it is just a
+pointer value being passed.
 
 ```
 number my_zsock.routingId ()
@@ -2944,13 +3173,6 @@ Set socket option `immediate`.
 Available from libzmq 4.0.0.
 
 ```
-integer my_zsock.type ()
-```
-
-Get socket option `type`.
-Available from libzmq 3.0.0.
-
-```
 integer my_zsock.sndhwm ()
 ```
 
@@ -2979,160 +3201,6 @@ Set socket option `rcvhwm`.
 Available from libzmq 3.0.0.
 
 ```
-integer my_zsock.affinity ()
-```
-
-Get socket option `affinity`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setAffinity (Number)
-```
-
-Set socket option `affinity`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setSubscribe (String)
-```
-
-Set socket option `subscribe`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setUnsubscribe (String)
-```
-
-Set socket option `unsubscribe`.
-Available from libzmq 3.0.0.
-
-```
-string my_zsock.identity ()
-```
-
-Get socket option `identity`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setIdentity (String)
-```
-
-Set socket option `identity`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.rate ()
-```
-
-Get socket option `rate`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setRate (Number)
-```
-
-Set socket option `rate`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.recoveryIvl ()
-```
-
-Get socket option `recovery_ivl`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setRecoveryIvl (Number)
-```
-
-Set socket option `recovery_ivl`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.sndbuf ()
-```
-
-Get socket option `sndbuf`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setSndbuf (Number)
-```
-
-Set socket option `sndbuf`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.rcvbuf ()
-```
-
-Get socket option `rcvbuf`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setRcvbuf (Number)
-```
-
-Set socket option `rcvbuf`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.linger ()
-```
-
-Get socket option `linger`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setLinger (Number)
-```
-
-Set socket option `linger`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.reconnectIvl ()
-```
-
-Get socket option `reconnect_ivl`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setReconnectIvl (Number)
-```
-
-Set socket option `reconnect_ivl`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.reconnectIvlMax ()
-```
-
-Get socket option `reconnect_ivl_max`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setReconnectIvlMax (Number)
-```
-
-Set socket option `reconnect_ivl_max`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.backlog ()
-```
-
-Get socket option `backlog`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setBacklog (Number)
-```
-
-Set socket option `backlog`.
-Available from libzmq 3.0.0.
-
-```
 integer my_zsock.maxmsgsize ()
 ```
 
@@ -3158,34 +3226,6 @@ nothing my_zsock.setMulticastHops (Number)
 ```
 
 Set socket option `multicast_hops`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.rcvtimeo ()
-```
-
-Get socket option `rcvtimeo`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setRcvtimeo (Number)
-```
-
-Set socket option `rcvtimeo`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.sndtimeo ()
-```
-
-Get socket option `sndtimeo`.
-Available from libzmq 3.0.0.
-
-```
-nothing my_zsock.setSndtimeo (Number)
-```
-
-Set socket option `sndtimeo`.
 Available from libzmq 3.0.0.
 
 ```
@@ -3266,20 +3306,6 @@ Set socket option `tcp_accept_filter`.
 Available from libzmq 3.0.0.
 
 ```
-integer my_zsock.rcvmore ()
-```
-
-Get socket option `rcvmore`.
-Available from libzmq 3.0.0.
-
-```
-integer my_zsock.events ()
-```
-
-Get socket option `events`.
-Available from libzmq 3.0.0.
-
-```
 string my_zsock.lastEndpoint ()
 ```
 
@@ -3313,6 +3339,265 @@ nothing my_zsock.setDelayAttachOnConnect (Number)
 
 Set socket option `delay_attach_on_connect`.
 Available from libzmq 3.0.0.
+
+```
+integer my_zsock.hwm ()
+```
+
+Get socket option `hwm`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+nothing my_zsock.setHwm (Number)
+```
+
+Set socket option `hwm`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+integer my_zsock.swap ()
+```
+
+Get socket option `swap`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+nothing my_zsock.setSwap (Number)
+```
+
+Set socket option `swap`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+integer my_zsock.affinity ()
+```
+
+Get socket option `affinity`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setAffinity (Number)
+```
+
+Set socket option `affinity`.
+Available from libzmq 2.0.0.
+
+```
+string my_zsock.identity ()
+```
+
+Get socket option `identity`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setIdentity (String)
+```
+
+Set socket option `identity`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.rate ()
+```
+
+Get socket option `rate`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setRate (Number)
+```
+
+Set socket option `rate`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.recoveryIvl ()
+```
+
+Get socket option `recovery_ivl`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setRecoveryIvl (Number)
+```
+
+Set socket option `recovery_ivl`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.recoveryIvlMsec ()
+```
+
+Get socket option `recovery_ivl_msec`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+nothing my_zsock.setRecoveryIvlMsec (Number)
+```
+
+Set socket option `recovery_ivl_msec`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+integer my_zsock.mcastLoop ()
+```
+
+Get socket option `mcast_loop`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+nothing my_zsock.setMcastLoop (Number)
+```
+
+Set socket option `mcast_loop`.
+Available from libzmq 2.0.0 to 3.0.0.
+
+```
+integer my_zsock.rcvtimeo ()
+```
+
+Get socket option `rcvtimeo`.
+Available from libzmq 2.2.0.
+
+```
+nothing my_zsock.setRcvtimeo (Number)
+```
+
+Set socket option `rcvtimeo`.
+Available from libzmq 2.2.0.
+
+```
+integer my_zsock.sndtimeo ()
+```
+
+Get socket option `sndtimeo`.
+Available from libzmq 2.2.0.
+
+```
+nothing my_zsock.setSndtimeo (Number)
+```
+
+Set socket option `sndtimeo`.
+Available from libzmq 2.2.0.
+
+```
+integer my_zsock.sndbuf ()
+```
+
+Get socket option `sndbuf`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setSndbuf (Number)
+```
+
+Set socket option `sndbuf`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.rcvbuf ()
+```
+
+Get socket option `rcvbuf`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setRcvbuf (Number)
+```
+
+Set socket option `rcvbuf`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.linger ()
+```
+
+Get socket option `linger`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setLinger (Number)
+```
+
+Set socket option `linger`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.reconnectIvl ()
+```
+
+Get socket option `reconnect_ivl`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setReconnectIvl (Number)
+```
+
+Set socket option `reconnect_ivl`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.reconnectIvlMax ()
+```
+
+Get socket option `reconnect_ivl_max`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setReconnectIvlMax (Number)
+```
+
+Set socket option `reconnect_ivl_max`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.backlog ()
+```
+
+Get socket option `backlog`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setBacklog (Number)
+```
+
+Set socket option `backlog`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setSubscribe (String)
+```
+
+Set socket option `subscribe`.
+Available from libzmq 2.0.0.
+
+```
+nothing my_zsock.setUnsubscribe (String)
+```
+
+Set socket option `unsubscribe`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.type ()
+```
+
+Get socket option `type`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.rcvmore ()
+```
+
+Get socket option `rcvmore`.
+Available from libzmq 2.0.0.
+
+```
+integer my_zsock.events ()
+```
+
+Get socket option `events`.
+Available from libzmq 2.0.0.
 
 ```
 nothing my_zsock.test (Boolean)
@@ -3350,6 +3635,15 @@ Returns -1 if the message could not be read, else returns the
 number of strings filled, zero or more. Free each returned string
 using zstr_free(). If not enough strings are provided, remaining
 multipart frames in the message are dropped.
+
+```
+string my_zstr.recvCompress (Zsock)
+```
+
+De-compress and receive C string from socket, received as a message
+with two frames: size of the uncompressed string, and the string itself.
+Caller must free returned string using zstr_free(). Returns NULL if the
+context is being terminated or the process was interrupted.
 
 ```
 integer my_zstr.send (Zsock, String)
@@ -3391,6 +3685,24 @@ Send a series of strings (until NULL) as multipart data
 Returns 0 if the strings could be sent OK, or -1 on error.
 
 ```
+integer my_zstr.sendCompress (Zsock, String)
+```
+
+Compress and send a C string to a socket, as a message with two frames:
+size of the uncompressed string, and the string itself. The string is
+sent without trailing null byte; to read this you can use
+zstr_recv_compress, or a similar method that de-compresses and adds a
+null terminator on the received string.
+
+```
+integer my_zstr.sendmCompress (Zsock, String)
+```
+
+Compress and send a C string to a socket, as zstr_send_compress(),
+with a MORE flag, so that you can send further strings in the same
+multi-part message.
+
+```
 string my_zstr.str (Zsock)
 ```
 
@@ -3406,6 +3718,446 @@ a null pointer.
 
 ```
 nothing my_zstr.test (Boolean)
+```
+
+Self test of this class.
+
+### The Zsys class -
+
+Constructor:
+
+```
+var czmq = require ('bindings')('czmq')
+var my_zsys = new czmq.Zsys ()
+```
+
+Methods:
+
+```
+nothing my_zsys.shutdown ()
+```
+
+Optionally shut down the CZMQ zsys layer; this normally happens automatically
+when the process exits; however this call lets you force a shutdown
+earlier, avoiding any potential problems with atexit() ordering, especially
+with Windows dlls.
+
+```
+string my_zsys.sockname (Number)
+```
+
+Return ZMQ socket name for socket type
+*** This is for CZMQ internal use only and may change arbitrarily ***
+
+```
+zsock my_zsys.createPipe (Zsock)
+```
+
+Create a pipe, which consists of two PAIR sockets connected over inproc.
+The pipe is configured to use the zsys_pipehwm setting. Returns the
+frontend socket successful, NULL if failed.
+
+```
+nothing my_zsys.handlerReset ()
+```
+
+Reset interrupt handler, call this at exit if needed
+
+```
+nothing my_zsys.catchInterrupts ()
+```
+
+Set default interrupt handler, so Ctrl-C or SIGTERM will set
+zsys_interrupted. Idempotent; safe to call multiple times.
+Can be supressed by ZSYS_SIGHANDLER=false
+*** This is for CZMQ internal use only and may change arbitrarily ***
+
+```
+boolean my_zsys.fileExists (String)
+```
+
+Return 1 if file exists, else zero
+
+```
+time my_zsys.fileModified (String)
+```
+
+Return file modification time. Returns 0 if the file does not exist.
+
+```
+integer my_zsys.fileMode (String)
+```
+
+Return file mode; provides at least support for the POSIX S_ISREG(m)
+and S_ISDIR(m) macros and the S_IRUSR and S_IWUSR bits, on all boxes.
+Returns a mode_t cast to int, or -1 in case of error.
+
+```
+integer my_zsys.fileDelete (String)
+```
+
+Delete file. Does not complain if the file is absent
+
+```
+boolean my_zsys.fileStable (String)
+```
+
+Check if file is 'stable'
+
+```
+integer my_zsys.dirCreate (String)
+```
+
+Create a file path if it doesn't exist. The file path is treated as
+printf format.
+
+```
+integer my_zsys.dirDelete (String)
+```
+
+Remove a file path if empty; the pathname is treated as printf format.
+
+```
+integer my_zsys.dirChange (String)
+```
+
+Move to a specified working directory. Returns 0 if OK, -1 if this failed.
+
+```
+nothing my_zsys.fileModePrivate ()
+```
+
+Set private file creation mode; all files created from here will be
+readable/writable by the owner only.
+
+```
+nothing my_zsys.fileModeDefault ()
+```
+
+Reset default file creation mode; all files created from here will use
+process file mode defaults.
+
+```
+nothing my_zsys.version (Number, Number, Number)
+```
+
+Return the CZMQ version for run-time API detection; returns version
+number into provided fields, providing reference isn't null in each case.
+
+```
+string my_zsys.sprintf (String)
+```
+
+Format a string using printf formatting, returning a freshly allocated
+buffer. If there was insufficient memory, returns NULL. Free the returned
+string using zstr_free().
+
+```
+nothing my_zsys.socketError (String)
+```
+
+Handle an I/O error on some socket operation; will report and die on
+fatal errors, and continue silently on "try again" errors.
+*** This is for CZMQ internal use only and may change arbitrarily ***
+
+```
+string my_zsys.hostname ()
+```
+
+Return current host name, for use in public tcp:// endpoints. Caller gets
+a freshly allocated string, should free it using zstr_free(). If the host
+name is not resolvable, returns NULL.
+
+```
+integer my_zsys.daemonize (String)
+```
+
+Move the current process into the background. The precise effect depends
+on the operating system. On POSIX boxes, moves to a specified working
+directory (if specified), closes all file handles, reopens stdin, stdout,
+and stderr to the null device, and sets the process to ignore SIGHUP. On
+Windows, does nothing. Returns 0 if OK, -1 if there was an error.
+
+```
+integer my_zsys.runAs (String, String, String)
+```
+
+Drop the process ID into the lockfile, with exclusive lock, and switch
+the process to the specified group and/or user. Any of the arguments
+may be null, indicating a no-op. Returns 0 on success, -1 on failure.
+Note if you combine this with zsys_daemonize, run after, not before
+that method, or the lockfile will hold the wrong process ID.
+
+```
+boolean my_zsys.hasCurve ()
+```
+
+Returns true if the underlying libzmq supports CURVE security.
+Uses a heuristic probe according to the version of libzmq being used.
+
+```
+nothing my_zsys.setIoThreads ()
+```
+
+Configure the number of I/O threads that ZeroMQ will use. A good
+rule of thumb is one thread per gigabit of traffic in or out. The
+default is 1, sufficient for most applications. If the environment
+variable ZSYS_IO_THREADS is defined, that provides the default.
+Note that this method is valid only before any socket is created.
+
+```
+nothing my_zsys.setThreadSchedPolicy (Number)
+```
+
+Configure the scheduling policy of the ZMQ context thread pool.
+Not available on Windows. See the sched_setscheduler man page or sched.h
+for more information. If the environment variable ZSYS_THREAD_SCHED_POLICY
+is defined, that provides the default.
+Note that this method is valid only before any socket is created.
+
+```
+nothing my_zsys.setThreadPriority (Number)
+```
+
+Configure the scheduling priority of the ZMQ context thread pool.
+Not available on Windows. See the sched_setscheduler man page or sched.h
+for more information. If the environment variable ZSYS_THREAD_PRIORITY is
+defined, that provides the default.
+Note that this method is valid only before any socket is created.
+
+```
+nothing my_zsys.setMaxSockets ()
+```
+
+Configure the number of sockets that ZeroMQ will allow. The default
+is 1024. The actual limit depends on the system, and you can query it
+by using zsys_socket_limit (). A value of zero means "maximum".
+Note that this method is valid only before any socket is created.
+
+```
+size my_zsys.socketLimit ()
+```
+
+Return maximum number of ZeroMQ sockets that the system will support.
+
+```
+nothing my_zsys.setMaxMsgsz (Number)
+```
+
+Configure the maximum allowed size of a message sent.
+The default is INT_MAX.
+
+```
+integer my_zsys.maxMsgsz ()
+```
+
+Return maximum message size.
+
+```
+nothing my_zsys.setFileStableAgeMsec (Number)
+```
+
+Configure the threshold value of filesystem object age per st_mtime
+that should elapse until we consider that object "stable" at the
+current zclock_time() moment.
+The default is S_DEFAULT_ZSYS_FILE_STABLE_AGE_MSEC defined in zsys.c
+which generally depends on host OS, with fallback value of 5000.
+
+```
+msecs my_zsys.fileStableAgeMsec ()
+```
+
+Return current threshold value of file stable age in msec.
+This can be used in code that chooses to wait for this timeout
+before testing if a filesystem object is "stable" or not.
+
+```
+nothing my_zsys.setLinger ()
+```
+
+Configure the default linger timeout in msecs for new zsock instances.
+You can also set this separately on each zsock_t instance. The default
+linger time is zero, i.e. any pending messages will be dropped. If the
+environment variable ZSYS_LINGER is defined, that provides the default.
+Note that process exit will typically be delayed by the linger time.
+
+```
+nothing my_zsys.setSndhwm ()
+```
+
+Configure the default outgoing pipe limit (HWM) for new zsock instances.
+You can also set this separately on each zsock_t instance. The default
+HWM is 1,000, on all versions of ZeroMQ. If the environment variable
+ZSYS_SNDHWM is defined, that provides the default. Note that a value of
+zero means no limit, i.e. infinite memory consumption.
+
+```
+nothing my_zsys.setRcvhwm ()
+```
+
+Configure the default incoming pipe limit (HWM) for new zsock instances.
+You can also set this separately on each zsock_t instance. The default
+HWM is 1,000, on all versions of ZeroMQ. If the environment variable
+ZSYS_RCVHWM is defined, that provides the default. Note that a value of
+zero means no limit, i.e. infinite memory consumption.
+
+```
+nothing my_zsys.setPipehwm ()
+```
+
+Configure the default HWM for zactor internal pipes; this is set on both
+ends of the pipe, for outgoing messages only (sndhwm). The default HWM is
+1,000, on all versions of ZeroMQ. If the environment var ZSYS_ACTORHWM is
+defined, that provides the default. Note that a value of zero means no
+limit, i.e. infinite memory consumption.
+
+```
+size my_zsys.pipehwm ()
+```
+
+Return the HWM for zactor internal pipes.
+
+```
+nothing my_zsys.setIpv6 (Number)
+```
+
+Configure use of IPv6 for new zsock instances. By default sockets accept
+and make only IPv4 connections. When you enable IPv6, sockets will accept
+and connect to both IPv4 and IPv6 peers. You can override the setting on
+each zsock_t instance. The default is IPv4 only (ipv6 set to 0). If the
+environment variable ZSYS_IPV6 is defined (as 1 or 0), this provides the
+default. Note: has no effect on ZMQ v2.
+
+```
+integer my_zsys.ipv6 ()
+```
+
+Return use of IPv6 for zsock instances.
+
+```
+nothing my_zsys.setInterface (String)
+```
+
+Set network interface name to use for broadcasts, particularly zbeacon.
+This lets the interface be configured for test environments where required.
+For example, on Mac OS X, zbeacon cannot bind to 255.255.255.255 which is
+the default when there is no specified interface. If the environment
+variable ZSYS_INTERFACE is set, use that as the default interface name.
+Setting the interface to "*" means "use all available interfaces".
+
+```
+string my_zsys.interface ()
+```
+
+Return network interface to use for broadcasts, or "" if none was set.
+
+```
+nothing my_zsys.setIpv6Address (String)
+```
+
+Set IPv6 address to use zbeacon socket, particularly for receiving zbeacon.
+This needs to be set IPv6 is enabled as IPv6 can have multiple addresses
+on a given interface. If the environment variable ZSYS_IPV6_ADDRESS is set,
+use that as the default IPv6 address.
+
+```
+string my_zsys.ipv6Address ()
+```
+
+Return IPv6 address to use for zbeacon reception, or "" if none was set.
+
+```
+nothing my_zsys.setIpv6McastAddress (String)
+```
+
+Set IPv6 milticast address to use for sending zbeacon messages. This needs
+to be set if IPv6 is enabled. If the environment variable
+ZSYS_IPV6_MCAST_ADDRESS is set, use that as the default IPv6 multicast
+address.
+
+```
+string my_zsys.ipv6McastAddress ()
+```
+
+Return IPv6 multicast address to use for sending zbeacon, or "" if none was
+set.
+
+```
+nothing my_zsys.setAutoUseFd (Number)
+```
+
+Configure the automatic use of pre-allocated FDs when creating new sockets.
+If 0 (default), nothing will happen. Else, when a new socket is bound, the
+system API will be used to check if an existing pre-allocated FD with a
+matching port (if TCP) or path (if IPC) exists, and if it does it will be
+set via the ZMQ_USE_FD socket option so that the library will use it
+instead of creating a new socket.
+
+```
+integer my_zsys.autoUseFd ()
+```
+
+Return use of automatic pre-allocated FDs for zsock instances.
+
+```
+nothing my_zsys.setLogident (String)
+```
+
+Set log identity, which is a string that prefixes all log messages sent
+by this process. The log identity defaults to the environment variable
+ZSYS_LOGIDENT, if that is set.
+
+```
+nothing my_zsys.setLogsender (String)
+```
+
+Sends log output to a PUB socket bound to the specified endpoint. To
+collect such log output, create a SUB socket, subscribe to the traffic
+you care about, and connect to the endpoint. Log traffic is sent as a
+single string frame, in the same format as when sent to stdout. The
+log system supports a single sender; multiple calls to this method will
+bind the same sender to multiple endpoints. To disable the sender, call
+this method with a null argument.
+
+```
+nothing my_zsys.setLogsystem (Boolean)
+```
+
+Enable or disable logging to the system facility (syslog on POSIX boxes,
+event log on Windows). By default this is disabled.
+
+```
+nothing my_zsys.error (String)
+```
+
+Log error condition - highest priority
+
+```
+nothing my_zsys.warning (String)
+```
+
+Log warning condition - high priority
+
+```
+nothing my_zsys.notice (String)
+```
+
+Log normal, but significant, condition - normal priority
+
+```
+nothing my_zsys.info (String)
+```
+
+Log informational message - low priority
+
+```
+nothing my_zsys.debug (String)
+```
+
+Log debug-level message - lowest priority
+
+```
+nothing my_zsys.test (Boolean)
 ```
 
 Self test of this class.

@@ -13,9 +13,10 @@ AM_CPPFLAGS = \
     ${libzmq_CFLAGS} \
     ${uuid_CFLAGS} \
     ${systemd_CFLAGS} \
+    ${lz4_CFLAGS} \
     -I$(srcdir)/include
 
-project_libs = ${libzmq_LIBS} ${uuid_LIBS} ${systemd_LIBS}
+project_libs = ${libzmq_LIBS} ${uuid_LIBS} ${systemd_LIBS} ${lz4_LIBS}
 
 SUBDIRS = doc
 DIST_SUBDIRS = doc
@@ -25,13 +26,24 @@ noinst_PROGRAMS =
 check_PROGRAMS =
 noinst_LTLIBRARIES =
 TESTS =
+# Prepare variables that can be populated (appended) in generated Makefiles or
+# manually maintained src/Makemodule-local.am
+EXTRA_DIST =
+CLEANFILES =
+DISTCLEANFILES =
 
-EXTRA_DIST = \
-    CMakeLists.txt \
+if ENABLE_DIST_CMAKEFILES
+EXTRA_DIST += \
     Findlibzmq.cmake \
     Finduuid.cmake \
     Findsystemd.cmake \
+    Findlz4.cmake \
     src/CMakeLists-local.txt \
+    CMakeLists.txt
+endif
+
+EXTRA_DIST += \
+    bindings \
     src/zsock_option.inc \
     src/zgossip_engine.inc \
     src/zhash_primes.inc \
@@ -47,6 +59,8 @@ EXTRA_DIST = \
     CONTRIBUTING.md \
     src/czmq_classes.h
 
+# NOTE: this "include" syntax is not a "make" but an "autotools" keyword,
+# see https://www.gnu.org/software/automake/manual/html_node/Include.html
 include $(srcdir)/src/Makemodule.am
 include $(srcdir)/src/Makemodule-local.am # Optional project-local hook
 

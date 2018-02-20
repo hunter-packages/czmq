@@ -47,7 +47,23 @@ zuuid_new (void)
     assert (sizeof (uuid) == ZUUID_LEN);
     UuidCreate (&uuid);
     zuuid_set (self, (byte *) &uuid);
-#elif defined (__UTYPE_ANDROID) || !defined (HAVE_UUID)
+#elif defined (HAVE_UUID)
+    uuid_t uuid;
+    assert (sizeof (uuid) == ZUUID_LEN);
+    uuid_generate (uuid);
+    zuuid_set (self, (byte *) uuid);
+#elif defined (__UTYPE_OPENBSD) || defined (__UTYPE_FREEBSD) || defined (__UTYPE_NETBSD)
+    uuid_t uuid;
+    uint32_t status = 0;
+    uuid_create (&uuid, &status);
+    if (status != uuid_s_ok) {
+        zuuid_destroy (&self);
+        return NULL;
+    }
+    byte buffer [ZUUID_LEN];
+    uuid_enc_be (&buffer, &uuid);
+    zuuid_set (self, buffer);
+#else
     //  No UUID system calls, so generate a random string
     byte uuid [ZUUID_LEN];
 
@@ -64,24 +80,6 @@ zuuid_new (void)
         zsys_error (strerror (errno));
         assert (false);
     }
-#elif defined (__UTYPE_OPENBSD) || defined (__UTYPE_FREEBSD) || defined (__UTYPE_NETBSD)
-    uuid_t uuid;
-    uint32_t status = 0;
-    uuid_create (&uuid, &status);
-    if (status != uuid_s_ok) {
-        zuuid_destroy (&self);
-        return NULL;
-    }
-    byte buffer [ZUUID_LEN];
-    uuid_enc_be (&buffer, &uuid);
-    zuuid_set (self, buffer);
-#elif defined (__UTYPE_LINUX) || defined (__UTYPE_OSX) || defined (__UTYPE_GNU)
-    uuid_t uuid;
-    assert (sizeof (uuid) == ZUUID_LEN);
-    uuid_generate (uuid);
-    zuuid_set (self, (byte *) uuid);
-#else
-#   error "Unknow UNIX TYPE"
 #endif
     return self;
 }
@@ -96,8 +94,8 @@ zuuid_destroy (zuuid_t **self_p)
     assert (self_p);
     if (*self_p) {
         zuuid_t *self = *self_p;
-        free (self->str_canonical);
-        free (self);
+        freen (self->str_canonical);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -336,6 +334,10 @@ zuuid_test (bool verbose)
 
     zuuid_destroy (&uuid);
     zuuid_destroy (&copy);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

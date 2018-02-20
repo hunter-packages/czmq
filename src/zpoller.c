@@ -46,9 +46,9 @@ struct _zpoller_t {
 static int
 s_rebuild_poll_set (zpoller_t *self)
 {
-    free (self->poll_set);
+    freen (self->poll_set);
     self->poll_set = NULL;
-    free (self->poll_readers);
+    freen (self->poll_readers);
     self->poll_readers = NULL;
 
     self->poll_size = zlist_size (self->reader_list);
@@ -124,10 +124,10 @@ zpoller_destroy (zpoller_t **self_p)
         zmq_poller_destroy (&self->zmq_poller);
 #else
         zlist_destroy (&self->reader_list);
-        free (self->poll_readers);
-        free (self->poll_set);
+        freen (self->poll_readers);
+        freen (self->poll_set);
 #endif
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -174,8 +174,15 @@ zpoller_remove (zpoller_t *self, void *reader)
     else
         rc = zmq_poller_remove_fd (self->zmq_poller, *(SOCKET *) reader);
 #else
-    zlist_remove (self->reader_list, reader);
-    self->need_rebuild = true;
+    size_t num_readers_before = zlist_size (self->reader_list);
+    zlist_remove (self->reader_list, reader); // won't fail with non-existent reader
+    size_t num_readers_after = zlist_size (self->reader_list);
+    if (num_readers_before != num_readers_after)
+        self->need_rebuild = true;
+    else {
+        errno = EINVAL;
+        rc    = -1;
+    }
 #endif
     return rc;
 }
@@ -223,7 +230,7 @@ zpoller_wait (zpoller_t *self, int timeout)
     if (!zmq_poller_wait (self->zmq_poller, &event, timeout * ZMQ_POLL_MSEC))
         return event.user_data;
     else
-    if (errno == ETIMEDOUT)
+    if (errno == ETIMEDOUT || errno == EAGAIN)
         self->expired = true;
     else
     if (zsys_interrupted && !self->nonstop)
@@ -322,6 +329,11 @@ zpoller_test (bool verbose)
     rc = zpoller_remove (poller, sink);
     assert (rc == 0);
 
+    // Removing a non-existent reader shall fail
+    rc = zpoller_remove (poller, sink);
+    assert (rc == -1);
+    assert (errno == EINVAL);
+
     //  Check we can poll an FD
     rc = zsock_connect (bowl, "tcp://127.0.0.1:%d", port_nbr);
     assert (rc != -1);
@@ -374,6 +386,10 @@ zpoller_test (bool verbose)
     zpoller_destroy (&poller);
     zsock_destroy (&client);
     zsock_destroy (&server);
+#endif
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
 #endif
     //  @end
 

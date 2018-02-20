@@ -127,8 +127,8 @@ zlistx_destroy (zlistx_t **self_p)
     if (*self_p) {
         zlistx_t *self = *self_p;
         zlistx_purge (self);
-        free (self->head);
-        free (self);
+        freen (self->head);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -365,7 +365,7 @@ zlistx_detach (zlistx_t *self, void *handle)
         s_node_relink (node, node->prev, node->next);
         node->tag = 0xDeadBeef;
         void *item = node->item;
-        free (node);
+        freen (node);
         self->size--;
         return item;
     }
@@ -681,7 +681,7 @@ zlistx_test (bool verbose)
     assert (zlistx_size (list) == 1);
     char *string = (char *) zlistx_detach (list, NULL);
     assert (streq (string, "world"));
-    free (string);
+    freen (string);
     assert (zlistx_size (list) == 0);
 
     //  Check next/back work
@@ -743,6 +743,10 @@ zlistx_test (bool verbose)
 
     zlistx_purge (list);
     zlistx_destroy (&list);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

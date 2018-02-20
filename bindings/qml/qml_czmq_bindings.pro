@@ -27,7 +27,7 @@ android {
   !system(bash $$CZMQ_ROOT/builds/android/build.sh) {
     error(Failed to build the czmq library with $$CZMQ_ROOT/builds/android/build.sh)
   }
-  
+
   VENDOR_PREFIX = $$CZMQ_ROOT/builds/android/prefix/$(TOOLCHAIN_NAME)
   BUILDDIR  = $$PWD/build/$(TOOLCHAIN_NAME)
   QMAKE_LIBDIR += $$VENDOR_PREFIX/lib
@@ -39,6 +39,7 @@ LIBS += -lczmq
 HEADERS += \
   $$SRCDIR/qml_czmq_plugin.h \
   $$SRCDIR/QmlZactor.h \
+  $$SRCDIR/QmlZargs.h \
   $$SRCDIR/QmlZarmour.h \
   $$SRCDIR/QmlZcert.h \
   $$SRCDIR/QmlZcertstore.h \
@@ -61,12 +62,14 @@ HEADERS += \
   $$SRCDIR/QmlZproc.h \
   $$SRCDIR/QmlZsock.h \
   $$SRCDIR/QmlZstr.h \
+  $$SRCDIR/QmlZsys.h \
   $$SRCDIR/QmlZtimerset.h \
   $$SRCDIR/QmlZtrie.h \
-  $$SRCDIR/QmlZuuid.h 
+  $$SRCDIR/QmlZuuid.h
 
 SOURCES += \
   $$SRCDIR/QmlZactor.cpp \
+  $$SRCDIR/QmlZargs.cpp \
   $$SRCDIR/QmlZarmour.cpp \
   $$SRCDIR/QmlZcert.cpp \
   $$SRCDIR/QmlZcertstore.cpp \
@@ -89,9 +92,10 @@ SOURCES += \
   $$SRCDIR/QmlZproc.cpp \
   $$SRCDIR/QmlZsock.cpp \
   $$SRCDIR/QmlZstr.cpp \
+  $$SRCDIR/QmlZsys.cpp \
   $$SRCDIR/QmlZtimerset.cpp \
   $$SRCDIR/QmlZtrie.cpp \
-  $$SRCDIR/QmlZuuid.cpp 
+  $$SRCDIR/QmlZuuid.cpp
 
 OBJECTS_DIR = $$BUILDDIR/.obj
 MOC_DIR     = $$BUILDDIR/.moc

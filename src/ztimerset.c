@@ -58,7 +58,7 @@ ztimerset_destroy (ztimerset_t **self_p)
     if (*self_p) {
         ztimerset_t *self = *self_p;
         zmq_timers_destroy (&self->zmq_timers);
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 #endif
@@ -152,10 +152,14 @@ ztimerset_execute (ztimerset_t *self)
 //  --------------------------------------------------------------------------
 //  Self test of this class
 
-void handler(int timer_id, void* arg)
+//  Avoid -Werror=unused-function
+#ifdef ZMQ_HAVE_TIMERS
+static void
+handler (int timer_id, void *arg)
 {
     *((bool*)arg) = true;
 }
+#endif
 
 void
 ztimerset_test (bool verbose)
@@ -213,6 +217,10 @@ ztimerset_test (bool verbose)
     assert (timeout2 > timeout);
 
     ztimerset_destroy (&self);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
     printf ("OK\n");
 #endif

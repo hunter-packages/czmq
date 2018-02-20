@@ -13,6 +13,8 @@ IF %1.==--help. (
     ECHO    --enable-drafts         from zip package, enables DRAFT API
     ECHO    --disable-drafts        from git repository, disables DRAFT API
     ECHO    --without-zmakecert     do not build zmakecert.exe
+    ECHO    --without-zsp           do not build zsp.exe
+    ECHO    --without-test_randof   do not build test_randof.exe
     ECHO    --without-czmq_selftest  do not build czmq_selftest.exe
     GOTO :eof
 )
@@ -35,7 +37,7 @@ IF EXIST "..\..\..\libzmq" (
 ) ELSE (
     ECHO Building without libzmq
     ECHO CZMQ cannot build without libzmq
-    ECHO Please clone https://github.com/zeromq/libzmq, and then configure ^& build
+    ECHO Please clone https://github.com/zeromq/libzmq.git, and then configure ^& build
     ECHO TODO: resolve this problem automatically.
     GOTO error
 )
@@ -52,6 +54,13 @@ IF EXIST "..\..\..\systemd" (
 ) ELSE (
     ECHO Building without systemd
     ECHO #undef HAVE_SYSTEMD>> platform.h
+)
+IF EXIST "..\..\..\lz4" (
+    ECHO Building with lz4
+    ECHO #define HAVE_LZ4 1>> platform.h
+) ELSE (
+    ECHO Building without lz4
+    ECHO #undef HAVE_LZ4>> platform.h
 )
 
 :-  Check if we want to build the draft API

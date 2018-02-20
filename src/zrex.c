@@ -95,7 +95,7 @@ zrex_destroy (zrex_t **self_p)
     if (*self_p) {
         zrex_t *self = *self_p;
         zstr_free (&self->hit_set);
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -300,6 +300,10 @@ zrex_test (bool verbose)
     assert (streq (zrex_hit (rex, 1), "CURVE"));
     assert (streq (mechanism, "CURVE"));
     zrex_destroy (&rex);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     
     //  @end
     printf ("OK\n");

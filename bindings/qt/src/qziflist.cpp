@@ -34,7 +34,7 @@ QZiflist::~QZiflist ()
 void QZiflist::reload ()
 {
     ziflist_reload (self);
-    
+
 }
 
 ///
@@ -90,7 +90,32 @@ const QString QZiflist::netmask ()
 void QZiflist::print ()
 {
     ziflist_print (self);
-    
+
+}
+
+///
+//  Get a list of network interfaces currently defined on the system
+//  Includes IPv6 interfaces
+QZiflist * QZiflist::newIpv6 ()
+{
+    QZiflist *rv = new QZiflist (ziflist_new_ipv6 ());
+    return rv;
+}
+
+///
+//  Reload network interfaces from system, including IPv6
+void QZiflist::reloadIpv6 ()
+{
+    ziflist_reload_ipv6 (self);
+
+}
+
+///
+//  Return true if the current interface uses IPv6
+bool QZiflist::isIpv6 ()
+{
+    bool rv = ziflist_is_ipv6 (self);
+    return rv;
 }
 
 ///
@@ -98,7 +123,7 @@ void QZiflist::print ()
 void QZiflist::test (bool verbose)
 {
     ziflist_test (verbose);
-    
+
 }
 /*
 ################################################################################

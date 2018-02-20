@@ -95,7 +95,7 @@ zframe_destroy (zframe_t **self_p)
         assert (zframe_is (self));
         zmq_msg_close (&self->zmsg);
         self->tag = 0xDeadBeef;
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -226,7 +226,8 @@ zframe_data (zframe_t *self)
 
 //  --------------------------------------------------------------------------
 //  Return meta data property for frame.
-//  Caller must free string when finished with it.
+//  The caller shall not modify or free the returned value, which shall be
+//  owned by the message.
 
 const char *
 zframe_meta (zframe_t *self, const char *property)
@@ -521,6 +522,16 @@ zframe_recv_nowait (void *source)
         return NULL;            //  Interrupted or terminated
     }
     self->more = zsock_rcvmore (source);
+#if defined (ZMQ_SERVER)
+    //  Grab routing ID if we're reading from a SERVER socket (ZMQ 4.2 and later)
+    if (zsock_type (source) == ZMQ_SERVER)
+        self->routing_id = zmq_msg_routing_id (&self->zmsg);
+#endif
+#if defined (ZMQ_DISH)
+    //  Grab group if we're reading from a DISH Socket (ZMQ 4.2 and later)
+    if (zsock_type (source) == ZMQ_DISH)
+        strcpy (self->group, zmq_msg_group (&self->zmsg));
+#endif
     return self;
 }
 
@@ -576,10 +587,14 @@ zframe_test (bool verbose)
 
     //  @selftest
     //  Create two PAIR sockets and connect over inproc
-    zsock_t *output = zsock_new_pair ("@tcp://127.0.0.1:9001");
+    zsock_t *output = zsock_new (ZMQ_PAIR);
     assert (output);
-    zsock_t *input = zsock_new_pair (">tcp://127.0.0.1:9001");
+    int port = zsock_bind (output, "tcp://127.0.0.1:*");
+    assert (port != -1);
+    zsock_t *input = zsock_new (ZMQ_PAIR);
     assert (input);
+    rc = zsock_connect (input, "tcp://127.0.0.1:%d", port);
+    assert (rc != -1);
 
     //  Send five different frames, test ZFRAME_MORE
     int frame_nbr;
@@ -617,10 +632,10 @@ zframe_test (bool verbose)
     zframe_reset (frame, "END", 3);
     char *string = zframe_strhex (frame);
     assert (streq (string, "454E44"));
-    free (string);
+    freen (string);
     string = zframe_strdup (frame);
     assert (streq (string, "END"));
-    free (string);
+    freen (string);
     rc = zframe_send (&frame, output, 0);
     assert (rc == 0);
 
@@ -730,6 +745,10 @@ zframe_test (bool verbose)
 
     zsock_destroy (&dish);
     zsock_destroy (&radio);
+#endif
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
 #endif
 
     //  @end

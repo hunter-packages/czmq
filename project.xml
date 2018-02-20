@@ -8,14 +8,17 @@
     repository = "https://github.com/zeromq/czmq"
     >
     <include filename = "license.xml" />
-    <version major = "4" minor = "0" patch = "2" />
+    <version major = "4" minor = "1" patch = "0" />
+    <abi current = "5" revision = "0" age = "1" />
     <use project = "libzmq" />
     <use project = "uuid" optional = "1" implied = "1" />
     <use project = "systemd" optional = "1" implied = "1" min_major = "200" />
+    <use project = "lz4" optional = "1" implied = "1" />
     <target name = "*" />
 
     <!-- These classes have an API model -->
     <class name = "zactor" />
+    <class name = "zargs" />
     <class name = "zarmour" />
     <class name = "zcert" />
     <class name = "zcertstore" />
@@ -38,6 +41,7 @@
     <class name = "zproc" />
     <class name = "zsock" />
     <class name = "zstr" />
+    <class name = "zsys" />
     <class name = "ztimerset" />
     <class name = "ztrie" />
     <class name = "zuuid" />
@@ -49,7 +53,6 @@
     <class name = "zmonitor" state = "stable" />
     <class name = "zproxy" state = "stable" />
     <class name = "zrex" state = "stable" />
-    <class name = "zsys" state = "stable" />
 
     <!-- Models that we build using GSL -->
     <model name = "sockopts" />
@@ -70,6 +73,10 @@
     <!-- Command-line utilities -->
     <main name = "zmakecert" />
 
+    <!-- Private command-line utilities -->
+    <main name = "zsp" private = "1" />
+    <main name = "test_randof" private = "1" />
+
     <!-- target configuration -->
     <target name = "nuget">
         <option name = "id" value = "czmq_vc120" />
@@ -77,6 +84,16 @@
         <option name = "dependency">
             <item name = "libzmq_vc120" value = "4.2.0.0" />
         </option>
+    </target>
+
+    <target name = "jenkins" >
+        <!-- While Jenkinsfile does not build prerequisites,
+             request via node label that they are expected
+             present in that OS deployment / buildroot -->
+        <option name = "agent_label" value = "libzmq4-dev && ( linux || macosx || bsd || solaris || posix || windows )" />
+        <option name = "check_sequential" value = "1" />
+        <option name = "use_test_timeout" value = "30" />
+        <option name = "use_test_retry" value = "3" />
     </target>
 
 </project>

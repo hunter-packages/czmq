@@ -75,7 +75,7 @@ module CZMQ
 
       # Create a new callback of the following type:
       # Actors get a pipe and arguments from caller
-      #     typedef void (zactor_fn) (     
+      #     typedef void (zactor_fn) (
       #         zsock_t *pipe, void *args);
       #
       # @note WARNING: If your Ruby code doesn't retain a reference to the
@@ -86,6 +86,28 @@ module CZMQ
         ::FFI::Function.new :void, [:pointer, :pointer], blocking: true do |pipe, args|
           pipe = Zsock.__new pipe, false
           result = yield pipe, args
+          result
+        end
+      end
+
+      # Create a new callback of the following type:
+      # Function to be called on zactor_destroy. Default behavior is to send zmsg_t with string "$TERM" in a first frame.
+      #
+      # An example - to send $KTHXBAI string
+      #
+      #     if (zstr_send (self->pipe, "$KTHXBAI") == 0)
+      #         zsock_wait (self->pipe);
+      #     typedef void (zactor_destructor_fn) (
+      #         zactor_t *self);
+      #
+      # @note WARNING: If your Ruby code doesn't retain a reference to the
+      #   FFI::Function object after passing it to a C function call,
+      #   it may be garbage collected while C still holds the pointer,
+      #   potentially resulting in a segmentation fault.
+      def self.destructor_fn
+        ::FFI::Function.new :void, [:pointer], blocking: true do |self_|
+          self_ = Zactor.__new self_, false
+          result = yield self_
           result
         end
       end
@@ -110,7 +132,7 @@ module CZMQ
       end
 
       # Send a zmsg message to the actor, take ownership of the message
-      # and destroy when it has been sent.                             
+      # and destroy when it has been sent.
       #
       # @param msg_p [#__ptr_give_ref]
       # @return [Integer]
@@ -122,9 +144,9 @@ module CZMQ
         result
       end
 
-      # Receive a zmsg message from the actor. Returns NULL if the actor 
+      # Receive a zmsg message from the actor. Returns NULL if the actor
       # was interrupted before the message could be received, or if there
-      # was a timeout on the actor.                                      
+      # was a timeout on the actor.
       #
       # @return [Zmsg]
       def recv()
@@ -145,8 +167,8 @@ module CZMQ
       end
 
       # Probe the supplied reference. If it looks like a zactor_t instance,
-      # return the underlying libzmq actor handle; else if it looks like   
-      # a libzmq actor handle, return the supplied value.                  
+      # return the underlying libzmq actor handle; else if it looks like
+      # a libzmq actor handle, return the supplied value.
       #
       # @param self_ [::FFI::Pointer, #to_ptr]
       # @return [::FFI::Pointer]
@@ -156,7 +178,7 @@ module CZMQ
       end
 
       # Return the actor's zsock handle. Use this when you absolutely need
-      # to work with the zsock instance rather than the actor.            
+      # to work with the zsock instance rather than the actor.
       #
       # @return [Zsock]
       def sock()
@@ -164,6 +186,17 @@ module CZMQ
         self_p = @ptr
         result = ::CZMQ::FFI.zactor_sock(self_p)
         result = Zsock.__new result, false
+        result
+      end
+
+      # Change default destructor by custom function. Actor MUST be able to handle new message instead of default $TERM.
+      #
+      # @param destructor [::FFI::Pointer, #to_ptr]
+      # @return [void]
+      def set_destructor(destructor)
+        raise DestroyedError unless @ptr
+        self_p = @ptr
+        result = ::CZMQ::FFI.zactor_set_destructor(self_p, destructor)
         result
       end
 

@@ -130,13 +130,65 @@ zconfig_destroy (zconfig_t **self_p)
         //  Destroy other properties and then self
         zlist_destroy (&self->comments);
         zfile_destroy (&self->file);
-        free (self->name);
-        free (self->value);
-        free (self);
+        freen (self->name);
+        freen (self->value);
+        freen (self);
         *self_p = NULL;
     }
 }
 
+
+//  --------------------------------------------------------------------------
+//  Destroy node and subtree (all children)
+
+void
+zconfig_remove (zconfig_t **self_p)
+{
+    assert (self_p);
+
+    if (*self_p == NULL)
+        return;
+
+    zconfig_t *self = *self_p;
+
+    //  Destroy all children
+    zconfig_remove_subtree (self);
+
+    if (self->parent) {
+        if (self->parent->child == self) {
+           self->parent->child = self->next;
+        }
+        else {
+            zconfig_t *prev = self->parent->child;
+            while (prev->next != self) {
+                prev = prev->next;
+            }
+            prev->next = self->next;
+        }
+    }
+
+    //  Destroy other properties and then self
+    zlist_destroy (&self->comments);
+    zfile_destroy (&self->file);
+    freen (self->name);
+    freen (self->value);
+    freen (self);
+    *self_p = NULL;
+}
+
+
+//  --------------------------------------------------------------------------
+//  Destroy subtree (all children)
+
+void
+zconfig_remove_subtree (zconfig_t *self)
+{
+    assert (self);
+
+    //  Destroy all children
+    zconfig_destroy (&self->child);
+    self->child = NULL;
+}
 
 //  --------------------------------------------------------------------------
 //  Return name of config item
@@ -225,7 +277,7 @@ void
 zconfig_set_name (zconfig_t *self, const char *name)
 {
     assert (self);
-    free (self->name);
+    freen (self->name);
     self->name = name? strdup (name): NULL;
 }
 
@@ -514,7 +566,7 @@ zconfig_loadf (const char *format, ...)
     va_end (argptr);
     if (filename) {
         zconfig_t *config = zconfig_load (filename);
-        free (filename);
+        freen (filename);
         return config;
     }
     else
@@ -658,7 +710,7 @@ zconfig_chunk_load (zchunk_t *chunk)
                 }
                 else {
                     zclock_log ("E (zconfig): (%d) indentation error", lineno);
-                    free (value);
+                    freen (value);
                     valid = false;
                 }
             }
@@ -667,7 +719,7 @@ zconfig_chunk_load (zchunk_t *chunk)
         if (s_verify_eoln (scanner, lineno))
             valid = false;
 
-        free (name);
+        freen (name);
         if (!valid)
             break;
     }
@@ -733,7 +785,7 @@ s_collect_name (char **start, int lineno)
     && (name [0] == '/'
     ||  name [length - 1] == '/')) {
         zclock_log ("E (zconfig): (%d) '/' not valid at name start or end", lineno);
-        free (name);
+        freen (name);
         name = NULL;
     }
     return name;
@@ -811,7 +863,7 @@ s_collect_value (char **start, int lineno)
     }
     //  If we had an error, drop value and return NULL
     if (rc) {
-        free (value);
+        freen (value);
         value = NULL;
     }
     return value;
@@ -946,9 +998,30 @@ zconfig_test (bool verbose)
     printf (" * zconfig: ");
 
     //  @selftest
+
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
+
+    const char *testbasedir  = ".test_zconfig";
+    const char *testfile = "test.cfg";
+    char *basedirpath = NULL;   // subdir in a test, under SELFTEST_DIR_RW
+    char *filepath = NULL;      // pathname to testfile in a test, in dirpath
+
+    basedirpath = zsys_sprintf ("%s/%s", SELFTEST_DIR_RW, testbasedir);
+    assert (basedirpath);
+    filepath = zsys_sprintf ("%s/%s", basedirpath, testfile);
+    assert (filepath);
+
+    // Make sure old aborted tests do not hinder us
+    zdir_t *dir = zdir_new (basedirpath, NULL);
+    if (dir) {
+        zdir_remove (dir, true);
+        zdir_destroy (&dir);
+    }
+    zsys_file_delete (filepath);
+    zsys_dir_delete  (basedirpath);
+
     //  Create temporary directory for test files
-#   define TESTDIR ".test_zconfig"
-    zsys_dir_create (TESTDIR);
+    zsys_dir_create (basedirpath);
 
     zconfig_t *root = zconfig_new ("root", NULL);
     assert (root);
@@ -966,12 +1039,12 @@ zconfig_test (bool verbose)
     zconfig_set_comment (root, "   CURVE certificate");
     zconfig_set_comment (root, "   -----------------");
     assert (zconfig_comments (root));
-    zconfig_save (root, TESTDIR "/test.cfg");
+    zconfig_save (root, filepath);
     zconfig_destroy (&root);
-    root = zconfig_load (TESTDIR "/test.cfg");
+    root = zconfig_load (filepath);
     if (verbose)
         zconfig_save (root, "-");
-    assert (streq (zconfig_filename (root), TESTDIR "/test.cfg"));
+    assert (streq (zconfig_filename (root), filepath));
 
     char *email = zconfig_get (root, "/headers/email", NULL);
     assert (email);
@@ -980,7 +1053,7 @@ zconfig_test (bool verbose)
     assert (passwd);
     assert (streq (passwd, "Top Secret"));
 
-    zconfig_savef (root, "%s/%s", TESTDIR, "test.cfg");
+    zconfig_savef (root, "%s/%s", basedirpath, testfile);
     assert (!zconfig_has_changed (root));
     int rc = zconfig_reload (&root);
     assert (rc == 0);
@@ -1002,7 +1075,7 @@ zconfig_test (bool verbose)
     char *string = zconfig_str_save (root);
     assert (string);
     assert (streq (string, (char *) zchunk_data (chunk)));
-    free (string);
+    freen (string);
     assert (chunk);
     zconfig_destroy (&root);
 
@@ -1014,17 +1087,281 @@ zconfig_test (bool verbose)
 
     //  Test config can't be saved to a file in a path that doesn't
     //  exist or isn't writable
-    rc = zconfig_savef (root, "%s/path/that/doesnt/exist/%s", TESTDIR, "test.cfg");
+    rc = zconfig_savef (root, "%s/path/that/doesnt/exist/%s", basedirpath, testfile);
     assert (rc == -1);
 
     zconfig_destroy (&root);
     zchunk_destroy (&chunk);
 
+    // Test str_load
+    zconfig_t *config = zconfig_str_load (
+        "malamute\n"
+        "    endpoint = ipc://@/malamute\n"
+        "    producer = STREAM\n"
+        "    consumer\n"
+        "        STREAM2 = .*\n"
+        "        STREAM3 = HAM\n"
+        "server\n"
+        "    verbose = true\n"
+        );
+    assert (config);
+    assert (streq (zconfig_get (config, "malamute/endpoint", NULL), "ipc://@/malamute"));
+    assert (streq (zconfig_get (config, "malamute/producer", NULL), "STREAM"));
+    assert (zconfig_locate (config, "malamute/consumer"));
+
+    zconfig_t *c = zconfig_child (zconfig_locate (config, "malamute/consumer"));
+    assert (c);
+    assert (streq (zconfig_name (c), "STREAM2"));
+    assert (streq (zconfig_value (c), ".*"));
+
+    c = zconfig_next (c);
+    assert (c);
+    assert (streq (zconfig_name (c), "STREAM3"));
+    assert (streq (zconfig_value (c), "HAM"));
+
+    c = zconfig_next (c);
+    assert (!c);
+
+    assert (streq (zconfig_get (config, "server/verbose", NULL), "true"));
+
+    zconfig_destroy (&config);
+
+    //  Test subtree removal
+	{
+		zconfig_t *root = zconfig_str_load (
+			"context\n"
+			"    iothreads = 1\n"
+			"    verbose = 1      #   Ask for a trace\n"
+			"main\n"
+			"    type = zqueue    #  ZMQ_DEVICE type\n"
+			"    frontend\n"
+			"        option\n"
+			"            hwm = 1000\n"
+			"            swap = 25000000     #  25MB\n"
+			"        bind = 'inproc://addr1'\n"
+			"        bind = 'ipc://addr2'\n"
+			"    backend\n"
+			"        bind = inproc://addr3\n"
+		);
+
+        //  no subtree
+        zconfig_t *to_delete = zconfig_locate (root, "context/iothreads");
+        assert (to_delete);
+
+        zconfig_remove_subtree (to_delete);
+
+        zconfig_t *check = zconfig_locate (root, "context/iothreads");
+        assert (check);
+        assert (streq (zconfig_value (check), "1"));
+
+        check = zconfig_locate (root, "context/verbose");
+        assert (check);
+        assert (streq (zconfig_value (check), "1"));
+
+        //  existing subtree
+        to_delete = zconfig_locate (root, "main/frontend/option");
+        assert (to_delete);
+
+        zconfig_remove_subtree (to_delete);
+
+        check = zconfig_locate (root, "main/frontend/option/hwm");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend/option/swap");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend/option");
+        assert (check);
+        assert (streq (zconfig_value (check), ""));
+        check = zconfig_next (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "bind"));
+        assert (streq (zconfig_value (check), "inproc://addr1"));
+        check = zconfig_next (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "bind"));
+        assert (streq (zconfig_value (check), "ipc://addr2"));
+        assert (zconfig_next (check) == NULL);
+
+        to_delete = zconfig_locate (root, "main/frontend");
+        assert (to_delete);
+
+        zconfig_remove_subtree (to_delete);
+
+        check = zconfig_locate (root, "main/frontend/option/hwm");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend/option/swap");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend/option");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend/bind");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend");
+        assert (check);
+        assert (streq (zconfig_value (check), ""));
+        assert (zconfig_child (check) == NULL);
+        check = zconfig_next (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "backend"));
+        assert (streq (zconfig_value (check), ""));
+
+        to_delete = zconfig_locate (root, "main");
+        assert (to_delete);
+
+        zconfig_remove_subtree (to_delete);
+
+        check = zconfig_locate (root, "main/type");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/frontend");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main/backend");
+        assert (check == NULL);
+        check = zconfig_locate (root, "main");
+        assert (check);
+
+        //  root
+        zconfig_remove_subtree (root);
+
+        assert (root);
+        assert (zconfig_child (root) == NULL);
+        check = zconfig_locate (root, "main");
+        assert (check == NULL);
+        check = zconfig_locate (root, "context");
+        assert (check == NULL);
+
+        zconfig_destroy (&root);
+    }
+
+    //  Test node and subtree removal
+	{
+		zconfig_t *root = zconfig_str_load (
+			"A1 = abc\n"
+			"    x\n"
+			"        1\n"
+			"        2\n"
+			"    y = 1      #   Ask for a trace\n"
+			"A2\n"
+			"    B1 = zqueue    #  ZMQ_DEVICE type\n"
+			"    B2\n"
+			"        C1\n"
+			"            hwm = 1000\n"
+			"            swap = 25000000     #  25MB\n"
+			"        C2 = 50\n"
+			"        C3\n"
+			"            bind = addr3\n"
+			"    B3\n"
+			"        bind = inproc://addr4\n"
+			"    B4 = Ignac\n"
+			"        z = 5\n"
+			"A3\n"
+			"A4\n"
+		);
+
+        zconfig_t *to_delete = zconfig_locate (root, "A2/B2/C3");
+        assert (to_delete);
+
+        zconfig_remove (&to_delete);
+
+        zconfig_t *check = zconfig_locate (root, "A2/B2/C2");
+        assert (check);
+        assert (streq (zconfig_value (check), "50"));
+        assert (zconfig_next (check) == NULL);
+        assert (zconfig_locate (root, "A2/B2/C3/bind") == NULL);
+        assert (zconfig_locate (root, "A2/B2/C3") == NULL);
+
+        to_delete = zconfig_locate (root, "A2/B2");
+        assert (to_delete);
+
+        zconfig_remove (&to_delete);
+
+        check = zconfig_locate (root, "A2");
+        assert (check);
+        check = zconfig_child (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "B1"));
+        assert (streq (zconfig_value (check), "zqueue"));
+        check = zconfig_next (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "B3"));
+        assert (streq (zconfig_value (check), ""));
+        assert (zconfig_locate (root, "A2/B2/C1") == NULL);
+        assert (zconfig_locate (root, "A2/B2/C2") == NULL);
+        assert (zconfig_locate (root, "A2/B2") == NULL);
+        assert (zconfig_locate (root, "A2/B4"));
+
+        to_delete = zconfig_locate (root, "A2/B1");
+        assert (to_delete);
+
+        zconfig_remove (&to_delete);
+
+        check = zconfig_locate (root, "A2");
+        assert (check);
+        check = zconfig_child (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "B3"));
+        assert (streq (zconfig_value (check), ""));
+        check = zconfig_next (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "B4"));
+        assert (streq (zconfig_value (check), "Ignac"));
+        assert (zconfig_next (check) == NULL);
+        assert (zconfig_locate (root, "A2/B1") == NULL);
+        assert (zconfig_locate (root, "A2/B2") == NULL);
+
+        to_delete = zconfig_locate (root, "A2/B3");
+        assert (to_delete);
+
+        zconfig_remove (&to_delete);
+
+        check = zconfig_locate (root, "A2");
+        assert (check);
+        check = zconfig_child (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "B4"));
+        assert (streq (zconfig_value (check), "Ignac"));
+        assert (zconfig_next (check) == NULL);
+
+        to_delete = zconfig_locate (root, "A2");
+        assert (to_delete);
+
+        zconfig_remove (&to_delete);
+
+        check = zconfig_locate (root, "A1");
+        assert (check);
+        check = zconfig_next (check);
+        assert (check);
+        assert (streq (zconfig_name (check), "A3"));
+        assert (zconfig_locate (root, "A2/B4") == NULL);
+        assert (zconfig_locate (root, "A2") == NULL);
+
+        to_delete = zconfig_locate (root, "A1");
+        assert (to_delete);
+
+        zconfig_remove (&to_delete);
+
+        check = zconfig_child (root);
+        assert (check);
+        assert (streq (zconfig_name (check), "A3"));
+        assert (zconfig_locate (root, "A1/x/1") == NULL);
+        assert (zconfig_locate (root, "A1/x") == NULL);
+        assert (zconfig_locate (root, "A1/y") == NULL);
+        assert (zconfig_locate (root, "A3"));
+        assert (zconfig_locate (root, "A4"));
+
+        //  called on root should be equivalent to zconfig_destroy (&root)
+        zconfig_remove (&root);
+    }
+
     //  Delete all test files
-    zdir_t *dir = zdir_new (TESTDIR, NULL);
+    dir = zdir_new (basedirpath, NULL);
     assert (dir);
     zdir_remove (dir, true);
     zdir_destroy (&dir);
+
+    zstr_free (&basedirpath);
+    zstr_free (&filepath);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

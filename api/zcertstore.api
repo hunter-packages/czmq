@@ -65,6 +65,14 @@
         Print list of certificates in store to logging facility
     </method>
 
+    <method name = "certs" state = "draft">
+        Return a list of all the certificates in the store.
+        The caller takes ownership of the zlistx_t object and is responsible
+        for destroying it.  The caller does not take ownership of the zcert_t
+        objects.
+        <return type = "zlistx" fresh = "1" />
+    </method>
+
     <method name = "test" singleton = "1">
         Self test of this class
         <argument name = "verbose" type = "boolean" />

@@ -18,15 +18,15 @@ class QmlZiflist : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool isNULL READ isNULL)
-    
+
 public:
     ziflist_t *self;
-    
+
     QmlZiflist() { self = NULL; }
     bool isNULL() { return self == NULL; }
-    
+
     static QObject* qmlAttachedProperties(QObject* object); // defined in QmlZiflist.cpp
-    
+
 public slots:
     //  Reload network interfaces from system
     void reload ();
@@ -51,19 +51,29 @@ public slots:
 
     //  Return the list of interfaces.
     void print ();
+
+    //  Reload network interfaces from system, including IPv6
+    void reloadIpv6 ();
+
+    //  Return true if the current interface uses IPv6
+    bool isIpv6 ();
 };
 
 class QmlZiflistAttached : public QObject
 {
     Q_OBJECT
     QObject* m_attached;
-    
+
 public:
     QmlZiflistAttached (QObject* attached) {
         Q_UNUSED (attached);
     };
-    
+
 public slots:
+    //  Get a list of network interfaces currently defined on the system
+    //  Includes IPv6 interfaces
+    QmlZiflist *newIpv6 ();
+
     //  Self test of this class.
     void test (bool verbose);
 

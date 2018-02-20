@@ -592,7 +592,7 @@ zgossip_msg_set_ttl (zgossip_msg_t *self, uint32_t ttl)
 void
 zgossip_msg_test (bool verbose)
 {
-    printf (" * zgossip_msg:");
+    printf (" * zgossip_msg: ");
 
     if (verbose)
         printf ("\n");
@@ -678,6 +678,10 @@ zgossip_msg_test (bool verbose)
     zgossip_msg_destroy (&self);
     zsock_destroy (&input);
     zsock_destroy (&output);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

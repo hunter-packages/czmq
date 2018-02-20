@@ -58,6 +58,8 @@
         '../../include/czmq_prelude.h',
         '../../src/zactor.c',
         '../../include/zactor.h',
+        '../../src/zargs.c',
+        '../../include/zargs.h',
         '../../src/zarmour.c',
         '../../include/zarmour.h',
         '../../src/zauth.c',
@@ -134,6 +136,7 @@
         '../../src/zsock_option.inc',
         '../../include/czmq_library.h',
         '../../src/czmq_selftest.c',
+        '../../src/czmq_private_selftest.c',
         '../../src/czmq_classes.h'
       ],
       'dependencies': [
@@ -153,6 +156,26 @@
       'type': 'executable',
       'sources': [
         '../../src/zmakecert.c'
+      ],
+      'dependencies': [
+        'libczmq'
+      ]
+    },
+    {
+      'target_name': 'zsp',
+      'type': 'executable',
+      'sources': [
+        '../../src/zsp.c'
+      ],
+      'dependencies': [
+        'libczmq'
+      ]
+    },
+    {
+      'target_name': 'test_randof',
+      'type': 'executable',
+      'sources': [
+        '../../src/test_randof.c'
       ],
       'dependencies': [
         'libczmq'

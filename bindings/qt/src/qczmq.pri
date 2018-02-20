@@ -12,6 +12,7 @@ qczmq-uselib:!qczmq-buildlib {
     HEADERS       += \
                      $$PWD/qczmq.h \
                      $$PWD/qzactor.h \
+                     $$PWD/qzargs.h \
                      $$PWD/qzarmour.h \
                      $$PWD/qzcert.h \
                      $$PWD/qzcertstore.h \
@@ -34,12 +35,14 @@ qczmq-uselib:!qczmq-buildlib {
                      $$PWD/qzproc.h \
                      $$PWD/qzsock.h \
                      $$PWD/qzstr.h \
+                     $$PWD/qzsys.h \
                      $$PWD/qztimerset.h \
                      $$PWD/qztrie.h \
                      $$PWD/qzuuid.h
 
     SOURCES       += \
                      $$PWD/qzactor.cpp \
+                     $$PWD/qzargs.cpp \
                      $$PWD/qzarmour.cpp \
                      $$PWD/qzcert.cpp \
                      $$PWD/qzcertstore.cpp \
@@ -62,6 +65,7 @@ qczmq-uselib:!qczmq-buildlib {
                      $$PWD/qzproc.cpp \
                      $$PWD/qzsock.cpp \
                      $$PWD/qzstr.cpp \
+                     $$PWD/qzsys.cpp \
                      $$PWD/qztimerset.cpp \
                      $$PWD/qztrie.cpp \
                      $$PWD/qzuuid.cpp

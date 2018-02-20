@@ -110,9 +110,9 @@ zsock_destroy_checked (zsock_t **self_p, const char *filename, size_t line_nbr)
         self->tag = 0xDeadBeef;
         int rc = zsys_close (self->handle, filename, line_nbr);
         assert (rc == 0);
-        free (self->endpoint);
-        free (self->cache);
-        free (self);
+        freen (self->endpoint);
+        freen (self->cache);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -995,7 +995,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             int *int_p = va_arg (argptr, int *);
             if (int_p)
                 *int_p = string? atoi (string): 0;
-            free (string);
+            freen (string);
         }
         else
         if (*picture == '1') {
@@ -1003,7 +1003,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             uint8_t *uint8_p = va_arg (argptr, uint8_t *);
             if (uint8_p)
                 *uint8_p = string? (uint8_t) atoi (string): 0;
-            free (string);
+            freen (string);
         }
         else
         if (*picture == '2') {
@@ -1011,7 +1011,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             uint16_t *uint16_p = va_arg (argptr, uint16_t *);
             if (uint16_p)
                 *uint16_p = string? (uint16_t) atol (string): 0;
-            free (string);
+            freen (string);
         }
         else
         if (*picture == '4') {
@@ -1019,7 +1019,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             uint32_t *uint32_p = va_arg (argptr, uint32_t *);
             if (uint32_p)
                 *uint32_p = string? (uint32_t) strtoul (string, NULL, 10): 0;
-            free (string);
+            freen (string);
         }
         else
         if (*picture == '8') {
@@ -1027,7 +1027,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             uint64_t *uint64_p = va_arg (argptr, uint64_t *);
             if (uint64_p)
                 *uint64_p = string? (uint64_t) strtoull (string, NULL, 10): 0;
-            free (string);
+            freen (string);
         }
         else
         if (*picture == 'u') {  //  Deprecated, use 4 or 8 instead
@@ -1035,7 +1035,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             uint *uint_p = va_arg (argptr, uint *);
             if (uint_p)
                 *uint_p = string? (uint) strtoul (string, NULL, 10): 0;
-            free (string);
+            freen (string);
         }
         else
         if (*picture == 's') {
@@ -1044,7 +1044,7 @@ zsock_vrecv (void *self, const char *picture, va_list argptr)
             if (string_p)
                 *string_p = string;
             else
-                free (string);
+                freen (string);
         }
         else
         if (*picture == 'b') {
@@ -1456,10 +1456,16 @@ zsock_bsend (void *self, const char *picture, ...)
 //  the type of each argument. See zsock_bsend for the supported argument
 //  types. All arguments must be pointers; this call sets them to point to
 //  values held on a per-socket basis.
-//  Note that zsock_brecv creates the returned objects, and the caller must
-//  destroy them when finished with them. The supplied pointers do not need
-//  to be initialized. Returns 0 if successful, or -1 if it failed to read
-//  a message.
+//  For types 1, 2, 4 and 8 the caller must allocate the memory itself before
+//  calling zsock_brecv.
+//  For types S, the caller must free the value once finished with it, as
+//  zsock_brecv will allocate the buffer.
+//  For type s, the caller must not free the value as it is stored in a
+//  local cache for performance purposes.
+//  For types c, f, u and m the caller must call the appropriate destructor
+//  depending on the object as zsock_brecv will create new objects.
+//  For type p the caller must coordinate with the sender, as it is just a
+//  pointer value being passed.
 
 //  This is the largest size we allow for an incoming longstr or chunk (1M)
 #define MAX_ALLOC_SIZE      1024 * 1024
@@ -1670,7 +1676,12 @@ zsock_signal (void *self, byte status)
 {
     assert (self);
     zmsg_t *msg = zmsg_new_signal (status);
-    return zmsg_send (&msg, self);
+    if (zmsg_send (&msg, self) < 0) {
+        zmsg_destroy (&msg);
+        return -1;
+    }
+    else
+        return 0;
 }
 
 
@@ -1816,15 +1827,17 @@ zsock_test (bool verbose)
         printf ("\n");
 
     //  @selftest
-    zsock_t *writer = zsock_new_push ("@tcp://127.0.0.1:5560");
+    zsock_t *writer = zsock_new (ZMQ_PUSH);
     assert (writer);
+    int port = zsock_bind (writer, "tcp://127.0.0.1:*");
+    assert (port != -1);
     assert (zsock_resolve (writer) != writer);
     assert (streq (zsock_type_str (writer), "PUSH"));
 
     int rc;
 #if (ZMQ_VERSION >= ZMQ_MAKE_VERSION (3, 2, 0))
     //  Check unbind
-    rc = zsock_unbind (writer, "tcp://127.0.0.1:%d", 5560);
+    rc = zsock_unbind (writer, "tcp://127.0.0.1:%d", port);
     assert (rc == 0);
 
     //  In some cases and especially when running under Valgrind, doing
@@ -1833,13 +1846,17 @@ zsock_test (bool verbose)
     zclock_sleep (100);
 
     //  Bind again
-    rc = zsock_bind (writer, "tcp://127.0.0.1:%d", 5560);
-    assert (rc == 5560);
-    assert (streq (zsock_endpoint (writer), "tcp://127.0.0.1:5560"));
+    rc = zsock_bind (writer, "tcp://127.0.0.1:%d", port);
+    assert (rc == port);
+    char endpoint [40];
+    sprintf (endpoint, "tcp://127.0.0.1:%d", port);
+    assert (streq (zsock_endpoint (writer), endpoint));
 #endif
 
-    zsock_t *reader = zsock_new_pull (">tcp://127.0.0.1:5560");
+    zsock_t *reader = zsock_new (ZMQ_PULL);
     assert (reader);
+    rc = zsock_connect (reader, "tcp://127.0.0.1:%d", port);
+    assert (rc != -1);
     assert (zsock_resolve (reader) != reader);
     assert (streq (zsock_type_str (reader), "PULL"));
 
@@ -1849,7 +1866,7 @@ zsock_test (bool verbose)
     assert (msg);
     char *string = zmsg_popstr (msg);
     assert (streq (string, "Hello, World"));
-    free (string);
+    freen (string);
     zmsg_destroy (&msg);
 
     //  Test resolve libzmq socket
@@ -1866,7 +1883,7 @@ zsock_test (bool verbose)
     zmq_ctx_term (zmq_ctx);
 
     //  Test resolve zsock
-    zsock_t *resolve = zsock_new_pub("@tcp://127.0.0.1:5561");
+    zsock_t *resolve = zsock_new_pub("@tcp://127.0.0.1:*");
     assert (resolve);
     assert (zsock_resolve (resolve) == resolve->handle);
     zsock_destroy (&resolve);
@@ -1876,14 +1893,14 @@ zsock_test (bool verbose)
     assert (zsock_resolve ((void *) &fd) == NULL);
 
     //  Test binding to ephemeral ports, sequential and random
-    int port = zsock_bind (writer, "tcp://127.0.0.1:*");
+    port = zsock_bind (writer, "tcp://127.0.0.1:*");
     assert (port >= DYNAMIC_FIRST && port <= DYNAMIC_LAST);
     port = zsock_bind (writer, "tcp://127.0.0.1:*[50000-]");
     assert (port >= 50000 && port <= DYNAMIC_LAST);
     port = zsock_bind (writer, "tcp://127.0.0.1:*[-50001]");
     assert (port >= DYNAMIC_FIRST && port <= 50001);
-    port = zsock_bind (writer, "tcp://127.0.0.1:*[60000-60050]");
-    assert (port >= 60000 && port <= 60050);
+    port = zsock_bind (writer, "tcp://127.0.0.1:*[60000-60500]");
+    assert (port >= 60000 && port <= 60500);
 
     port = zsock_bind (writer, "tcp://127.0.0.1:!");
     assert (port >= DYNAMIC_FIRST && port <= DYNAMIC_LAST);
@@ -1891,13 +1908,13 @@ zsock_test (bool verbose)
     assert (port >= 50000 && port <= DYNAMIC_LAST);
     port = zsock_bind (writer, "tcp://127.0.0.1:![-50001]");
     assert (port >= DYNAMIC_FIRST && port <= 50001);
-    port = zsock_bind (writer, "tcp://127.0.0.1:![60000-60050]");
-    assert (port >= 60000 && port <= 60050);
+    port = zsock_bind (writer, "tcp://127.0.0.1:![60000-60500]");
+    assert (port >= 60000 && port <= 60500);
 
     //  Test zsock_attach method
     zsock_t *server = zsock_new (ZMQ_DEALER);
     assert (server);
-    rc = zsock_attach (server, "@inproc://myendpoint,tcp://127.0.0.1:5556,inproc://others", true);
+    rc = zsock_attach (server, "@inproc://myendpoint,tcp://127.0.0.1:*,inproc://others", true);
     assert (rc == 0);
     rc = zsock_attach (server, "", false);
     assert (rc == 0);
@@ -1926,9 +1943,12 @@ zsock_test (bool verbose)
     //  Test zsock_send/recv pictures
     uint8_t  number1 = 123;
     uint16_t number2 = 123 * 123;
-    uint32_t number4 = 123 * 123 * 123;
-    uint64_t number4_MAX = UINT32_MAX;
-    uint64_t number8 = 123 * 123 * 123 * 123;
+    uint32_t number4 = 123 * 123;
+    number4 *= 123;
+    uint32_t number4_MAX = UINT32_MAX;
+    uint64_t number8 = 123 * 123;
+    number8 *= 123;
+    number8 *= 123;
     uint64_t number8_MAX = UINT64_MAX;
 
     zchunk_t *chunk = zchunk_new ("HELLO", 5);
@@ -1961,7 +1981,7 @@ zsock_test (bool verbose)
     byte *data;
     size_t size;
     char *pointer;
-    number8_MAX = number8 = number4 = number2 = number1 = 0;
+    number8_MAX = number8 = number4_MAX = number4 = number2 = number1 = 0ULL;
     rc = zsock_recv (reader, "i124488zsbcfUhp",
                      &integer, &number1, &number2, &number4, &number4_MAX,
                      &number8, &number8_MAX, &string, &data, &size, &chunk,
@@ -1987,9 +2007,9 @@ zsock_test (bool verbose)
     value = (char *) zhashx_lookup (hash, "2");
     assert (streq (value, "value B"));
     assert (original == pointer);
-    free (string);
-    free (data);
-    free (uuid_str);
+    freen (string);
+    freen (data);
+    freen (uuid_str);
     zframe_destroy (&frame);
     zchunk_destroy (&chunk);
     zhashx_destroy (&hash);
@@ -2079,10 +2099,14 @@ zsock_test (bool verbose)
 #ifdef ZMQ_SERVER
 
     //  Test zsock_bsend/brecv pictures with binary encoding on SERVER and CLIENT sockets
-    server = zsock_new_server ("tcp://127.0.0.1:5561");
+    server = zsock_new (ZMQ_SERVER);
     assert (server);
-    zsock_t* client = zsock_new_client ("tcp://127.0.0.1:5561");
+    port = zsock_bind (server, "tcp://127.0.0.1:*");
+    assert (port != -1);
+    zsock_t* client = zsock_new (ZMQ_CLIENT);
     assert (client);
+    rc = zsock_connect (client, "tcp://127.0.0.1:%d", port);
+    assert (rc != -1);
 
     //  From client to server
     chunk = zchunk_new ("World", 5);
@@ -2176,4 +2200,8 @@ zsock_test (bool verbose)
     //  @end
     printf ("OK\n");
     zsock_option_test (verbose);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
 }

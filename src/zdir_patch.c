@@ -74,11 +74,11 @@ zdir_patch_destroy (zdir_patch_t **self_p)
     assert (self_p);
     if (*self_p) {
         zdir_patch_t *self = *self_p;
-        free (self->path);
-        free (self->vpath);
-        free (self->digest);
+        freen (self->path);
+        freen (self->vpath);
+        freen (self->digest);
         zfile_destroy (&self->file);
-        free (self);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -193,17 +193,34 @@ zdir_patch_test (bool verbose)
     printf (" * zdir_patch: ");
 
     //  @selftest
-    zfile_t *file = zfile_new (".", "bilbo");
+
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
+
+    const char *testfile = "bilbo";
+    const char *prefix   = "/";
+    char *prefixed_testfile = zsys_sprintf ("%s%s", prefix, testfile);
+    assert (prefixed_testfile);
+
+    // Make sure old aborted tests do not hinder us
+    zsys_file_delete (prefixed_testfile);
+
+    zfile_t *file = zfile_new (SELFTEST_DIR_RW, testfile);
     assert (file);
-    zdir_patch_t *patch = zdir_patch_new (".", file, patch_create, "/");
+    zdir_patch_t *patch = zdir_patch_new (SELFTEST_DIR_RW, file, patch_create, prefix);
     assert (patch);
     zfile_destroy (&file);
 
     file = zdir_patch_file (patch);
     assert (file);
-    assert (streq (zfile_filename (file, "."), "bilbo"));
-    assert (streq (zdir_patch_vpath (patch), "/bilbo"));
+    assert (streq (zfile_filename (file, SELFTEST_DIR_RW), testfile));
+    assert (streq (zdir_patch_vpath (patch), prefixed_testfile));
     zdir_patch_destroy (&patch);
+
+    zstr_free (&prefixed_testfile);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

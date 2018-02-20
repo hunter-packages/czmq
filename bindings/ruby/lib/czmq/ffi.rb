@@ -35,6 +35,19 @@ module CZMQ
       @available = false
     end
 
+
+    def self.attach_function(name, *rest)
+      super
+    rescue ::FFI::NotFoundError
+      define_singleton_method name do |*|
+        raise NotImplementedError, "The function #{name}() is not provided by the CZMQ library installed. Upgrade the library or compile it with --enable-drafts."
+      end
+
+      return unless $VERBOSE || $DEBUG
+
+      warn "The function #{name}() is not provided by the installed CZMQ library."
+    end
+
     if available?
       opts = {
         blocking: true  # only necessary on MRI to deal with the GIL.
@@ -47,9 +60,28 @@ module CZMQ
       attach_function :zactor_is, [:pointer], :bool, **opts
       attach_function :zactor_resolve, [:pointer], :pointer, **opts
       attach_function :zactor_sock, [:pointer], :pointer, **opts
+      attach_function :zactor_set_destructor, [:pointer, :pointer], :void, **opts
       attach_function :zactor_test, [:bool], :void, **opts
 
       require_relative 'ffi/zactor'
+
+      attach_function :zargs_new, [:int, :pointer], :pointer, **opts
+      attach_function :zargs_destroy, [:pointer], :void, **opts
+      attach_function :zargs_progname, [:pointer], :string, **opts
+      attach_function :zargs_arguments, [:pointer], :size_t, **opts
+      attach_function :zargs_first, [:pointer], :string, **opts
+      attach_function :zargs_next, [:pointer], :string, **opts
+      attach_function :zargs_param_first, [:pointer], :string, **opts
+      attach_function :zargs_param_next, [:pointer], :string, **opts
+      attach_function :zargs_param_name, [:pointer], :string, **opts
+      attach_function :zargs_param_lookup, [:pointer, :string], :string, **opts
+      attach_function :zargs_param_lookupx, [:pointer, :string, :varargs], :string, **opts
+      attach_function :zargs_has_help, [:pointer], :bool, **opts
+      attach_function :zargs_param_empty, [:string], :bool, **opts
+      attach_function :zargs_print, [:pointer], :void, **opts
+      attach_function :zargs_test, [:bool], :void, **opts
+
+      require_relative 'ffi/zargs'
 
       attach_function :zarmour_new, [], :pointer, **opts
       attach_function :zarmour_destroy, [:pointer], :void, **opts
@@ -73,6 +105,7 @@ module CZMQ
 
       attach_function :zcert_new, [], :pointer, **opts
       attach_function :zcert_new_from, [:pointer, :pointer], :pointer, **opts
+      attach_function :zcert_new_from_txt, [:string, :string], :pointer, **opts
       attach_function :zcert_load, [:string], :pointer, **opts
       attach_function :zcert_destroy, [:pointer], :void, **opts
       attach_function :zcert_public_key, [:pointer], :pointer, **opts
@@ -80,17 +113,7 @@ module CZMQ
       attach_function :zcert_public_txt, [:pointer], :string, **opts
       attach_function :zcert_secret_txt, [:pointer], :string, **opts
       attach_function :zcert_set_meta, [:pointer, :string, :string, :varargs], :void, **opts
-      begin # DRAFT method
-        attach_function :zcert_unset_meta, [:pointer, :string], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zcert_unset_meta()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zcert_unset_meta(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zcert_unset_meta, [:pointer, :string], :void, **opts
       attach_function :zcert_meta, [:pointer, :string], :string, **opts
       attach_function :zcert_meta_keys, [:pointer], :pointer, **opts
       attach_function :zcert_save, [:pointer, :string], :int, **opts
@@ -106,31 +129,12 @@ module CZMQ
 
       attach_function :zcertstore_new, [:string], :pointer, **opts
       attach_function :zcertstore_destroy, [:pointer], :void, **opts
-      begin # DRAFT method
-        attach_function :zcertstore_set_loader, [:pointer, :pointer, :pointer, :pointer], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zcertstore_set_loader()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zcertstore_set_loader(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zcertstore_set_loader, [:pointer, :pointer, :pointer, :pointer], :void, **opts
       attach_function :zcertstore_lookup, [:pointer, :string], :pointer, **opts
       attach_function :zcertstore_insert, [:pointer, :pointer], :void, **opts
-      begin # DRAFT method
-        attach_function :zcertstore_empty, [:pointer], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zcertstore_empty()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zcertstore_empty(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zcertstore_empty, [:pointer], :void, **opts
       attach_function :zcertstore_print, [:pointer], :void, **opts
+      attach_function :zcertstore_certs, [:pointer], :pointer, **opts
       attach_function :zcertstore_test, [:bool], :void, **opts
 
       require_relative 'ffi/zcertstore'
@@ -200,6 +204,8 @@ module CZMQ
       attach_function :zconfig_str_load, [:string], :pointer, **opts
       attach_function :zconfig_str_save, [:pointer], :pointer, **opts
       attach_function :zconfig_has_changed, [:pointer], :bool, **opts
+      attach_function :zconfig_remove_subtree, [:pointer], :void, **opts
+      attach_function :zconfig_remove, [:pointer], :void, **opts
       attach_function :zconfig_fprint, [:pointer, :pointer], :void, **opts
       attach_function :zconfig_print, [:pointer], :void, **opts
       attach_function :zconfig_test, [:bool], :void, **opts
@@ -248,6 +254,7 @@ module CZMQ
       require_relative 'ffi/zdir_patch'
 
       attach_function :zfile_new, [:string, :string], :pointer, **opts
+      attach_function :zfile_tmp, [], :pointer, **opts
       attach_function :zfile_destroy, [:pointer], :void, **opts
       attach_function :zfile_dup, [:pointer], :pointer, **opts
       attach_function :zfile_filename, [:pointer, :string], :string, **opts
@@ -289,50 +296,10 @@ module CZMQ
       attach_function :zframe_streq, [:pointer, :string], :bool, **opts
       attach_function :zframe_more, [:pointer], :int, **opts
       attach_function :zframe_set_more, [:pointer, :int], :void, **opts
-      begin # DRAFT method
-        attach_function :zframe_routing_id, [:pointer], :uint32, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zframe_routing_id()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zframe_routing_id(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zframe_set_routing_id, [:pointer, :uint32], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zframe_set_routing_id()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zframe_set_routing_id(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zframe_group, [:pointer], :string, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zframe_group()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zframe_group(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zframe_set_group, [:pointer, :string], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zframe_set_group()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zframe_set_group(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zframe_routing_id, [:pointer], :uint32, **opts
+      attach_function :zframe_set_routing_id, [:pointer, :uint32], :void, **opts
+      attach_function :zframe_group, [:pointer], :string, **opts
+      attach_function :zframe_set_group, [:pointer, :string], :int, **opts
       attach_function :zframe_eq, [:pointer, :pointer], :bool, **opts
       attach_function :zframe_reset, [:pointer, :pointer, :size_t], :void, **opts
       attach_function :zframe_print, [:pointer, :string], :void, **opts
@@ -368,17 +335,7 @@ module CZMQ
 
       attach_function :zhashx_new, [], :pointer, **opts
       attach_function :zhashx_unpack, [:pointer], :pointer, **opts
-      begin # DRAFT method
-        attach_function :zhashx_unpack_own, [:pointer, :pointer], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zhashx_unpack_own()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zhashx_unpack_own(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zhashx_unpack_own, [:pointer, :pointer], :pointer, **opts
       attach_function :zhashx_destroy, [:pointer], :void, **opts
       attach_function :zhashx_insert, [:pointer, :pointer, :pointer], :int, **opts
       attach_function :zhashx_update, [:pointer, :pointer, :pointer], :void, **opts
@@ -398,17 +355,7 @@ module CZMQ
       attach_function :zhashx_load, [:pointer, :string], :int, **opts
       attach_function :zhashx_refresh, [:pointer], :int, **opts
       attach_function :zhashx_pack, [:pointer], :pointer, **opts
-      begin # DRAFT method
-        attach_function :zhashx_pack_own, [:pointer, :pointer], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zhashx_pack_own()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zhashx_pack_own(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zhashx_pack_own, [:pointer, :pointer], :pointer, **opts
       attach_function :zhashx_dup, [:pointer], :pointer, **opts
       attach_function :zhashx_set_destructor, [:pointer, :pointer], :void, **opts
       attach_function :zhashx_set_duplicator, [:pointer, :pointer], :void, **opts
@@ -431,6 +378,9 @@ module CZMQ
       attach_function :ziflist_broadcast, [:pointer], :string, **opts
       attach_function :ziflist_netmask, [:pointer], :string, **opts
       attach_function :ziflist_print, [:pointer], :void, **opts
+      attach_function :ziflist_new_ipv6, [], :pointer, **opts
+      attach_function :ziflist_reload_ipv6, [:pointer], :void, **opts
+      attach_function :ziflist_is_ipv6, [:pointer], :bool, **opts
       attach_function :ziflist_test, [:bool], :void, **opts
 
       require_relative 'ffi/ziflist'
@@ -523,28 +473,8 @@ module CZMQ
       attach_function :zmsg_sendm, [:pointer, :pointer], :int, **opts
       attach_function :zmsg_size, [:pointer], :size_t, **opts
       attach_function :zmsg_content_size, [:pointer], :size_t, **opts
-      begin # DRAFT method
-        attach_function :zmsg_routing_id, [:pointer], :uint32, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zmsg_routing_id()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zmsg_routing_id(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zmsg_set_routing_id, [:pointer, :uint32], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zmsg_set_routing_id()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zmsg_set_routing_id(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zmsg_routing_id, [:pointer], :uint32, **opts
+      attach_function :zmsg_set_routing_id, [:pointer, :uint32], :void, **opts
       attach_function :zmsg_prepend, [:pointer, :pointer], :int, **opts
       attach_function :zmsg_append, [:pointer, :pointer], :int, **opts
       attach_function :zmsg_pop, [:pointer], :pointer, **opts
@@ -584,215 +514,43 @@ module CZMQ
 
       require_relative 'ffi/zpoller'
 
-      begin # DRAFT method
-        attach_function :zproc_czmq_version, [], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_czmq_version()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_czmq_version(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_interrupted, [], :bool, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_interrupted()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_interrupted(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_has_curve, [], :bool, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_has_curve()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_has_curve(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_hostname, [], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_hostname()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_hostname(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_daemonize, [:string], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_daemonize()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_daemonize(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_run_as, [:string, :string, :string], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_run_as()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_run_as(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_set_io_threads, [:size_t], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_set_io_threads()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_set_io_threads(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_set_max_sockets, [:size_t], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_set_max_sockets()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_set_max_sockets(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_set_biface, [:string], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_set_biface()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_set_biface(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_biface, [], :string, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_biface()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_biface(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_set_log_ident, [:string], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_set_log_ident()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_set_log_ident(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_set_log_sender, [:string], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_set_log_sender()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_set_log_sender(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_set_log_system, [:bool], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_set_log_system()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_set_log_system(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_log_error, [:string, :varargs], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_log_error()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_log_error(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_log_warning, [:string, :varargs], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_log_warning()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_log_warning(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_log_notice, [:string, :varargs], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_log_notice()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_log_notice(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_log_info, [:string, :varargs], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_log_info()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_log_info(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_log_debug, [:string, :varargs], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_log_debug()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_log_debug(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zproc_test, [:bool], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zproc_test()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zproc_test(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zproc_new, [], :pointer, **opts
+      attach_function :zproc_destroy, [:pointer], :void, **opts
+      attach_function :zproc_set_args, [:pointer, :pointer], :void, **opts
+      attach_function :zproc_set_env, [:pointer, :pointer], :void, **opts
+      attach_function :zproc_set_stdin, [:pointer, :pointer], :void, **opts
+      attach_function :zproc_set_stdout, [:pointer, :pointer], :void, **opts
+      attach_function :zproc_set_stderr, [:pointer, :pointer], :void, **opts
+      attach_function :zproc_stdin, [:pointer], :pointer, **opts
+      attach_function :zproc_stdout, [:pointer], :pointer, **opts
+      attach_function :zproc_stderr, [:pointer], :pointer, **opts
+      attach_function :zproc_run, [:pointer], :int, **opts
+      attach_function :zproc_returncode, [:pointer], :int, **opts
+      attach_function :zproc_pid, [:pointer], :int, **opts
+      attach_function :zproc_running, [:pointer], :bool, **opts
+      attach_function :zproc_wait, [:pointer, :bool], :int, **opts
+      attach_function :zproc_actor, [:pointer], :pointer, **opts
+      attach_function :zproc_kill, [:pointer, :int], :void, **opts
+      attach_function :zproc_set_verbose, [:pointer, :bool], :void, **opts
+      attach_function :zproc_czmq_version, [], :int, **opts
+      attach_function :zproc_interrupted, [], :bool, **opts
+      attach_function :zproc_has_curve, [], :bool, **opts
+      attach_function :zproc_hostname, [], :pointer, **opts
+      attach_function :zproc_daemonize, [:string], :void, **opts
+      attach_function :zproc_run_as, [:string, :string, :string], :void, **opts
+      attach_function :zproc_set_io_threads, [:size_t], :void, **opts
+      attach_function :zproc_set_max_sockets, [:size_t], :void, **opts
+      attach_function :zproc_set_biface, [:string], :void, **opts
+      attach_function :zproc_biface, [], :string, **opts
+      attach_function :zproc_set_log_ident, [:string], :void, **opts
+      attach_function :zproc_set_log_sender, [:string], :void, **opts
+      attach_function :zproc_set_log_system, [:bool], :void, **opts
+      attach_function :zproc_log_error, [:string, :varargs], :void, **opts
+      attach_function :zproc_log_warning, [:string, :varargs], :void, **opts
+      attach_function :zproc_log_notice, [:string, :varargs], :void, **opts
+      attach_function :zproc_log_info, [:string, :varargs], :void, **opts
+      attach_function :zproc_log_debug, [:string, :varargs], :void, **opts
+      attach_function :zproc_test, [:bool], :void, **opts
 
       require_relative 'ffi/zproc'
 
@@ -809,72 +567,12 @@ module CZMQ
       attach_function :zsock_new_xsub, [:string], :pointer, **opts
       attach_function :zsock_new_pair, [:string], :pointer, **opts
       attach_function :zsock_new_stream, [:string], :pointer, **opts
-      begin # DRAFT method
-        attach_function :zsock_new_server, [:string], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_new_server()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_new_server(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_new_client, [:string], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_new_client()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_new_client(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_new_radio, [:string], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_new_radio()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_new_radio(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_new_dish, [:string], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_new_dish()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_new_dish(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_new_gather, [:string], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_new_gather()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_new_gather(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_new_scatter, [:string], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_new_scatter()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_new_scatter(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zsock_new_server, [:string], :pointer, **opts
+      attach_function :zsock_new_client, [:string], :pointer, **opts
+      attach_function :zsock_new_radio, [:string], :pointer, **opts
+      attach_function :zsock_new_dish, [:string], :pointer, **opts
+      attach_function :zsock_new_gather, [:string], :pointer, **opts
+      attach_function :zsock_new_scatter, [:string], :pointer, **opts
       attach_function :zsock_destroy, [:pointer], :void, **opts
       attach_function :zsock_bind, [:pointer, :string, :varargs], :int, **opts
       attach_function :zsock_endpoint, [:pointer], :string, **opts
@@ -889,54 +587,14 @@ module CZMQ
       attach_function :zsock_vrecv, [:pointer, :string, :pointer], :int, **opts
       attach_function :zsock_bsend, [:pointer, :string, :varargs], :int, **opts
       attach_function :zsock_brecv, [:pointer, :string, :varargs], :int, **opts
-      begin # DRAFT method
-        attach_function :zsock_routing_id, [:pointer], :uint32, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_routing_id()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_routing_id(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_set_routing_id, [:pointer, :uint32], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_set_routing_id()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_set_routing_id(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zsock_routing_id, [:pointer], :uint32, **opts
+      attach_function :zsock_set_routing_id, [:pointer, :uint32], :void, **opts
       attach_function :zsock_set_unbounded, [:pointer], :void, **opts
       attach_function :zsock_signal, [:pointer, :char], :int, **opts
       attach_function :zsock_wait, [:pointer], :int, **opts
       attach_function :zsock_flush, [:pointer], :void, **opts
-      begin # DRAFT method
-        attach_function :zsock_join, [:pointer, :string], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_join()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_join(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :zsock_leave, [:pointer, :string], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zsock_leave()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zsock_leave(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zsock_join, [:pointer, :string], :int, **opts
+      attach_function :zsock_leave, [:pointer, :string], :int, **opts
       attach_function :zsock_is, [:pointer], :bool, **opts
       attach_function :zsock_resolve, [:pointer], :pointer, **opts
       attach_function :zsock_heartbeat_ivl, [:pointer], :int, **opts
@@ -1015,21 +673,50 @@ module CZMQ
       attach_function :zsock_set_ipv6, [:pointer, :int], :void, **opts
       attach_function :zsock_immediate, [:pointer], :int, **opts
       attach_function :zsock_set_immediate, [:pointer, :int], :void, **opts
-      attach_function :zsock_type, [:pointer], :int, **opts
       attach_function :zsock_sndhwm, [:pointer], :int, **opts
       attach_function :zsock_set_sndhwm, [:pointer, :int], :void, **opts
       attach_function :zsock_rcvhwm, [:pointer], :int, **opts
       attach_function :zsock_set_rcvhwm, [:pointer, :int], :void, **opts
+      attach_function :zsock_maxmsgsize, [:pointer], :int, **opts
+      attach_function :zsock_set_maxmsgsize, [:pointer, :int], :void, **opts
+      attach_function :zsock_multicast_hops, [:pointer], :int, **opts
+      attach_function :zsock_set_multicast_hops, [:pointer, :int], :void, **opts
+      attach_function :zsock_set_xpub_verbose, [:pointer, :int], :void, **opts
+      attach_function :zsock_tcp_keepalive, [:pointer], :int, **opts
+      attach_function :zsock_set_tcp_keepalive, [:pointer, :int], :void, **opts
+      attach_function :zsock_tcp_keepalive_idle, [:pointer], :int, **opts
+      attach_function :zsock_set_tcp_keepalive_idle, [:pointer, :int], :void, **opts
+      attach_function :zsock_tcp_keepalive_cnt, [:pointer], :int, **opts
+      attach_function :zsock_set_tcp_keepalive_cnt, [:pointer, :int], :void, **opts
+      attach_function :zsock_tcp_keepalive_intvl, [:pointer], :int, **opts
+      attach_function :zsock_set_tcp_keepalive_intvl, [:pointer, :int], :void, **opts
+      attach_function :zsock_tcp_accept_filter, [:pointer], :pointer, **opts
+      attach_function :zsock_set_tcp_accept_filter, [:pointer, :string], :void, **opts
+      attach_function :zsock_last_endpoint, [:pointer], :pointer, **opts
+      attach_function :zsock_set_router_raw, [:pointer, :int], :void, **opts
+      attach_function :zsock_ipv4only, [:pointer], :int, **opts
+      attach_function :zsock_set_ipv4only, [:pointer, :int], :void, **opts
+      attach_function :zsock_set_delay_attach_on_connect, [:pointer, :int], :void, **opts
+      attach_function :zsock_hwm, [:pointer], :int, **opts
+      attach_function :zsock_set_hwm, [:pointer, :int], :void, **opts
+      attach_function :zsock_swap, [:pointer], :int, **opts
+      attach_function :zsock_set_swap, [:pointer, :int], :void, **opts
       attach_function :zsock_affinity, [:pointer], :int, **opts
       attach_function :zsock_set_affinity, [:pointer, :int], :void, **opts
-      attach_function :zsock_set_subscribe, [:pointer, :string], :void, **opts
-      attach_function :zsock_set_unsubscribe, [:pointer, :string], :void, **opts
       attach_function :zsock_identity, [:pointer], :pointer, **opts
       attach_function :zsock_set_identity, [:pointer, :string], :void, **opts
       attach_function :zsock_rate, [:pointer], :int, **opts
       attach_function :zsock_set_rate, [:pointer, :int], :void, **opts
       attach_function :zsock_recovery_ivl, [:pointer], :int, **opts
       attach_function :zsock_set_recovery_ivl, [:pointer, :int], :void, **opts
+      attach_function :zsock_recovery_ivl_msec, [:pointer], :int, **opts
+      attach_function :zsock_set_recovery_ivl_msec, [:pointer, :int], :void, **opts
+      attach_function :zsock_mcast_loop, [:pointer], :int, **opts
+      attach_function :zsock_set_mcast_loop, [:pointer, :int], :void, **opts
+      attach_function :zsock_rcvtimeo, [:pointer], :int, **opts
+      attach_function :zsock_set_rcvtimeo, [:pointer, :int], :void, **opts
+      attach_function :zsock_sndtimeo, [:pointer], :int, **opts
+      attach_function :zsock_set_sndtimeo, [:pointer, :int], :void, **opts
       attach_function :zsock_sndbuf, [:pointer], :int, **opts
       attach_function :zsock_set_sndbuf, [:pointer, :int], :void, **opts
       attach_function :zsock_rcvbuf, [:pointer], :int, **opts
@@ -1042,283 +729,123 @@ module CZMQ
       attach_function :zsock_set_reconnect_ivl_max, [:pointer, :int], :void, **opts
       attach_function :zsock_backlog, [:pointer], :int, **opts
       attach_function :zsock_set_backlog, [:pointer, :int], :void, **opts
-      attach_function :zsock_maxmsgsize, [:pointer], :int, **opts
-      attach_function :zsock_set_maxmsgsize, [:pointer, :int], :void, **opts
-      attach_function :zsock_multicast_hops, [:pointer], :int, **opts
-      attach_function :zsock_set_multicast_hops, [:pointer, :int], :void, **opts
-      attach_function :zsock_rcvtimeo, [:pointer], :int, **opts
-      attach_function :zsock_set_rcvtimeo, [:pointer, :int], :void, **opts
-      attach_function :zsock_sndtimeo, [:pointer], :int, **opts
-      attach_function :zsock_set_sndtimeo, [:pointer, :int], :void, **opts
-      attach_function :zsock_set_xpub_verbose, [:pointer, :int], :void, **opts
-      attach_function :zsock_tcp_keepalive, [:pointer], :int, **opts
-      attach_function :zsock_set_tcp_keepalive, [:pointer, :int], :void, **opts
-      attach_function :zsock_tcp_keepalive_idle, [:pointer], :int, **opts
-      attach_function :zsock_set_tcp_keepalive_idle, [:pointer, :int], :void, **opts
-      attach_function :zsock_tcp_keepalive_cnt, [:pointer], :int, **opts
-      attach_function :zsock_set_tcp_keepalive_cnt, [:pointer, :int], :void, **opts
-      attach_function :zsock_tcp_keepalive_intvl, [:pointer], :int, **opts
-      attach_function :zsock_set_tcp_keepalive_intvl, [:pointer, :int], :void, **opts
-      attach_function :zsock_tcp_accept_filter, [:pointer], :pointer, **opts
-      attach_function :zsock_set_tcp_accept_filter, [:pointer, :string], :void, **opts
+      attach_function :zsock_set_subscribe, [:pointer, :string], :void, **opts
+      attach_function :zsock_set_unsubscribe, [:pointer, :string], :void, **opts
+      attach_function :zsock_type, [:pointer], :int, **opts
       attach_function :zsock_rcvmore, [:pointer], :int, **opts
-      attach_function :zsock_fd, [:pointer], (::FFI::Platform.unix? ? :int : :uint64_t), **opts
+      attach_function :zsock_fd, [:pointer], (::FFI::Platform.unix? ? :int : :uint64), **opts
       attach_function :zsock_events, [:pointer], :int, **opts
-      attach_function :zsock_last_endpoint, [:pointer], :pointer, **opts
-      attach_function :zsock_set_router_raw, [:pointer, :int], :void, **opts
-      attach_function :zsock_ipv4only, [:pointer], :int, **opts
-      attach_function :zsock_set_ipv4only, [:pointer, :int], :void, **opts
-      attach_function :zsock_set_delay_attach_on_connect, [:pointer, :int], :void, **opts
       attach_function :zsock_test, [:bool], :void, **opts
 
       require_relative 'ffi/zsock'
 
       attach_function :zstr_recv, [:pointer], :pointer, **opts
       attach_function :zstr_recvx, [:pointer, :pointer, :varargs], :int, **opts
+      attach_function :zstr_recv_compress, [:pointer], :pointer, **opts
       attach_function :zstr_send, [:pointer, :string], :int, **opts
       attach_function :zstr_sendm, [:pointer, :string], :int, **opts
       attach_function :zstr_sendf, [:pointer, :string, :varargs], :int, **opts
       attach_function :zstr_sendfm, [:pointer, :string, :varargs], :int, **opts
       attach_function :zstr_sendx, [:pointer, :string, :varargs], :int, **opts
-      begin # DRAFT method
-        attach_function :zstr_str, [:pointer], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function zstr_str()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.zstr_str(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zstr_send_compress, [:pointer, :string], :int, **opts
+      attach_function :zstr_sendm_compress, [:pointer, :string], :int, **opts
+      attach_function :zstr_str, [:pointer], :pointer, **opts
       attach_function :zstr_free, [:pointer], :void, **opts
       attach_function :zstr_test, [:bool], :void, **opts
 
       require_relative 'ffi/zstr'
 
-      begin # DRAFT method
-        attach_function :ztimerset_new, [], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_new()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_new(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_destroy, [:pointer], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_destroy()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_destroy(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_add, [:pointer, :size_t, :pointer, :pointer], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_add()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_add(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_cancel, [:pointer, :int], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_cancel()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_cancel(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_set_interval, [:pointer, :int, :size_t], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_set_interval()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_set_interval(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_reset, [:pointer, :int], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_reset()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_reset(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_timeout, [:pointer], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_timeout()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_timeout(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_execute, [:pointer], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_execute()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_execute(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztimerset_test, [:bool], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztimerset_test()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztimerset_test(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :zsys_init, [], :pointer, **opts
+      attach_function :zsys_shutdown, [], :void, **opts
+      attach_function :zsys_socket, [:int, :string, :size_t], :pointer, **opts
+      attach_function :zsys_close, [:pointer, :string, :size_t], :int, **opts
+      attach_function :zsys_sockname, [:int], :pointer, **opts
+      attach_function :zsys_create_pipe, [:pointer], :pointer, **opts
+      attach_function :zsys_handler_set, [:pointer], :void, **opts
+      attach_function :zsys_handler_reset, [], :void, **opts
+      attach_function :zsys_catch_interrupts, [], :void, **opts
+      attach_function :zsys_file_exists, [:string], :bool, **opts
+      attach_function :zsys_file_modified, [:string], :pointer, **opts
+      attach_function :zsys_file_mode, [:string], :int, **opts
+      attach_function :zsys_file_delete, [:string], :int, **opts
+      attach_function :zsys_file_stable, [:string], :bool, **opts
+      attach_function :zsys_dir_create, [:string, :varargs], :int, **opts
+      attach_function :zsys_dir_delete, [:string, :varargs], :int, **opts
+      attach_function :zsys_dir_change, [:string], :int, **opts
+      attach_function :zsys_file_mode_private, [], :void, **opts
+      attach_function :zsys_file_mode_default, [], :void, **opts
+      attach_function :zsys_version, [:pointer, :pointer, :pointer], :void, **opts
+      attach_function :zsys_sprintf, [:string, :varargs], :pointer, **opts
+      attach_function :zsys_vprintf, [:string, :pointer], :pointer, **opts
+      attach_function :zsys_udp_new, [:bool], (::FFI::Platform.unix? ? :int : :uint64), **opts
+      attach_function :zsys_udp_close, [(::FFI::Platform.unix? ? :int : :uint64)], :int, **opts
+      attach_function :zsys_udp_send, [(::FFI::Platform.unix? ? :int : :uint64), :pointer, :pointer, :int], :int, **opts
+      attach_function :zsys_udp_recv, [(::FFI::Platform.unix? ? :int : :uint64), :pointer, :int], :pointer, **opts
+      attach_function :zsys_socket_error, [:string], :void, **opts
+      attach_function :zsys_hostname, [], :pointer, **opts
+      attach_function :zsys_daemonize, [:string], :int, **opts
+      attach_function :zsys_run_as, [:string, :string, :string], :int, **opts
+      attach_function :zsys_has_curve, [], :bool, **opts
+      attach_function :zsys_set_io_threads, [:size_t], :void, **opts
+      attach_function :zsys_set_thread_sched_policy, [:int], :void, **opts
+      attach_function :zsys_set_thread_priority, [:int], :void, **opts
+      attach_function :zsys_set_max_sockets, [:size_t], :void, **opts
+      attach_function :zsys_socket_limit, [], :size_t, **opts
+      attach_function :zsys_set_max_msgsz, [:int], :void, **opts
+      attach_function :zsys_max_msgsz, [], :int, **opts
+      attach_function :zsys_set_file_stable_age_msec, [:pointer], :void, **opts
+      attach_function :zsys_file_stable_age_msec, [], :pointer, **opts
+      attach_function :zsys_set_linger, [:size_t], :void, **opts
+      attach_function :zsys_set_sndhwm, [:size_t], :void, **opts
+      attach_function :zsys_set_rcvhwm, [:size_t], :void, **opts
+      attach_function :zsys_set_pipehwm, [:size_t], :void, **opts
+      attach_function :zsys_pipehwm, [], :size_t, **opts
+      attach_function :zsys_set_ipv6, [:int], :void, **opts
+      attach_function :zsys_ipv6, [], :int, **opts
+      attach_function :zsys_set_interface, [:string], :void, **opts
+      attach_function :zsys_interface, [], :string, **opts
+      attach_function :zsys_set_ipv6_address, [:string], :void, **opts
+      attach_function :zsys_ipv6_address, [], :string, **opts
+      attach_function :zsys_set_ipv6_mcast_address, [:string], :void, **opts
+      attach_function :zsys_ipv6_mcast_address, [], :string, **opts
+      attach_function :zsys_set_auto_use_fd, [:int], :void, **opts
+      attach_function :zsys_auto_use_fd, [], :int, **opts
+      attach_function :zsys_set_logident, [:string], :void, **opts
+      attach_function :zsys_set_logstream, [:pointer], :void, **opts
+      attach_function :zsys_set_logsender, [:string], :void, **opts
+      attach_function :zsys_set_logsystem, [:bool], :void, **opts
+      attach_function :zsys_error, [:string, :varargs], :void, **opts
+      attach_function :zsys_warning, [:string, :varargs], :void, **opts
+      attach_function :zsys_notice, [:string, :varargs], :void, **opts
+      attach_function :zsys_info, [:string, :varargs], :void, **opts
+      attach_function :zsys_debug, [:string, :varargs], :void, **opts
+      attach_function :zsys_test, [:bool], :void, **opts
+
+      require_relative 'ffi/zsys'
+
+      attach_function :ztimerset_new, [], :pointer, **opts
+      attach_function :ztimerset_destroy, [:pointer], :void, **opts
+      attach_function :ztimerset_add, [:pointer, :size_t, :pointer, :pointer], :int, **opts
+      attach_function :ztimerset_cancel, [:pointer, :int], :int, **opts
+      attach_function :ztimerset_set_interval, [:pointer, :int, :size_t], :int, **opts
+      attach_function :ztimerset_reset, [:pointer, :int], :int, **opts
+      attach_function :ztimerset_timeout, [:pointer], :int, **opts
+      attach_function :ztimerset_execute, [:pointer], :int, **opts
+      attach_function :ztimerset_test, [:bool], :void, **opts
 
       require_relative 'ffi/ztimerset'
 
-      begin # DRAFT method
-        attach_function :ztrie_new, [:pointer], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_new()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_new(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_destroy, [:pointer], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_destroy()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_destroy(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_insert_route, [:pointer, :string, :pointer, :pointer], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_insert_route()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_insert_route(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_remove_route, [:pointer, :string], :int, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_remove_route()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_remove_route(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_matches, [:pointer, :string], :bool, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_matches()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_matches(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_hit_data, [:pointer], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_hit_data()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_hit_data(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_hit_parameter_count, [:pointer], :size_t, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_hit_parameter_count()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_hit_parameter_count(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_hit_parameters, [:pointer], :pointer, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_hit_parameters()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_hit_parameters(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_hit_asterisk_match, [:pointer], :string, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_hit_asterisk_match()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_hit_asterisk_match(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_print, [:pointer], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_print()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_print(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
-      begin # DRAFT method
-        attach_function :ztrie_test, [:bool], :void, **opts
-      rescue ::FFI::NotFoundError
-        if $VERBOSE || $DEBUG
-          warn "The DRAFT function ztrie_test()" +
-            " is not provided by the installed CZMQ library."
-        end
-        def self.ztrie_test(*)
-          raise NotImplementedError, "compile CZMQ with --enable-drafts"
-        end
-      end
+      attach_function :ztrie_new, [:pointer], :pointer, **opts
+      attach_function :ztrie_destroy, [:pointer], :void, **opts
+      attach_function :ztrie_insert_route, [:pointer, :string, :pointer, :pointer], :int, **opts
+      attach_function :ztrie_remove_route, [:pointer, :string], :int, **opts
+      attach_function :ztrie_matches, [:pointer, :string], :bool, **opts
+      attach_function :ztrie_hit_data, [:pointer], :pointer, **opts
+      attach_function :ztrie_hit_parameter_count, [:pointer], :size_t, **opts
+      attach_function :ztrie_hit_parameters, [:pointer], :pointer, **opts
+      attach_function :ztrie_hit_asterisk_match, [:pointer], :string, **opts
+      attach_function :ztrie_print, [:pointer], :void, **opts
+      attach_function :ztrie_test, [:bool], :void, **opts
 
       require_relative 'ffi/ztrie'
 

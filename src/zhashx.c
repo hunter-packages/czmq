@@ -148,11 +148,11 @@ zhashx_destroy (zhashx_t **self_p)
         zhashx_t *self = *self_p;
         if (self->items) {
             s_purge (self);
-            free (self->items);
+            freen (self->items);
         }
         zlistx_destroy (&self->comments);
-        free (self->filename);
-        free (self);
+        freen (self->filename);
+        freen (self);
         *self_p = NULL;
     }
 }
@@ -189,14 +189,15 @@ s_item_destroy (zhashx_t *self, item_t *item, bool hard)
 
         if (self->key_destructor)
             (self->key_destructor)((void **) &item->key);
-        free (item);
+        freen (item);
     }
 }
 
 
 //  --------------------------------------------------------------------------
 //  Rehash hash table with specified new prime index
-//  Returns 0 on success, or -1 on failure (insufficient memory)
+//  Returns 0 on success, or fails the assertions (e.g. insufficient memory)
+//  Note: Older code used to return -1 in case of errors - this is no longer so
 
 static int
 s_zhashx_rehash (zhashx_t *self, uint new_prime_index)
@@ -225,7 +226,7 @@ s_zhashx_rehash (zhashx_t *self, uint new_prime_index)
         }
     }
     //  Destroy old hash table
-    free (self->items);
+    freen (self->items);
     self->items = new_items;
     self->prime_index = new_prime_index;
     return 0;
@@ -234,9 +235,10 @@ s_zhashx_rehash (zhashx_t *self, uint new_prime_index)
 
 //  --------------------------------------------------------------------------
 //  Insert item into hash table with specified key and item. Returns 0 on
-//  success. If the key is already present, or the process heap memory ran
-//  out, returns -1 and leaves existing item unchanged. Sets the hash cursor
-//  to the item, if found.
+//  success. If the key is already present, returns -1 and leaves existing
+//  item unchanged. Sets the hash cursor to the item, if found. Dies with
+//  assertion if the process heap memory ran out. (Note: older code returned
+//  -1 in such cases; this is no longer so).
 
 int
 zhashx_insert (zhashx_t *self, const void *key, void *value)
@@ -250,8 +252,7 @@ zhashx_insert (zhashx_t *self, const void *key, void *value)
     if (self->size >= limit * LOAD_FACTOR / 100) {
         //  Create new hash table
         uint new_prime_index = self->prime_index + GROWTH_FACTOR;
-        if (s_zhashx_rehash (self, new_prime_index))
-            return -1;
+        assert (s_zhashx_rehash (self, new_prime_index) == 0);
         self->chain_limit += CHAIN_GROWS;
     }
     return s_item_insert (self, key, value)? 0: -1;
@@ -305,6 +306,8 @@ s_item_insert (zhashx_t *self, const void *key, void *value)
 //  --------------------------------------------------------------------------
 //  Local helper function
 //  Lookup item in hash table, returns item or NULL
+//  Dies with assertion if the process heap memory ran out (Note: older code
+//  returned NULL in such cases; this is no longer so).
 
 static item_t *
 s_item_lookup (zhashx_t *self, const void *key)
@@ -323,8 +326,7 @@ s_item_lookup (zhashx_t *self, const void *key)
     if (len > self->chain_limit) {
         //  Create new hash table
         uint new_prime_index = self->prime_index + GROWTH_FACTOR;
-        if (s_zhashx_rehash (self, new_prime_index))
-            return NULL;
+        assert (s_zhashx_rehash (self, new_prime_index) == 0);
         limit = primes [self->prime_index];
         self->cached_index = self->hasher (key) % limit;
     }
@@ -395,6 +397,7 @@ zhashx_purge (zhashx_t *self)
         size_t limit = primes [INITIAL_PRIME];
         item_t **items = (item_t **) zmalloc (sizeof (item_t *) * limit);
         assert (items);
+        freen (self->items);
         self->prime_index = INITIAL_PRIME;
         self->chain_limit = INITIAL_CHAIN;
         self->items = items;
@@ -699,7 +702,7 @@ zhashx_load (zhashx_t *self, const char *filename)
     //  Take copy of filename in case self->filename is same string.
     char *filename_copy = strdup (filename);
     assert (filename_copy);
-    free (self->filename);
+    freen (self->filename);
     self->filename = filename_copy;
     self->modified = zsys_file_modified (self->filename);
     FILE *handle = fopen (self->filename, "r");
@@ -719,7 +722,7 @@ zhashx_load (zhashx_t *self, const char *filename)
             *equals++ = 0;
             zhashx_update (self, buffer, equals);
         }
-        free (buffer);
+        freen (buffer);
         fclose (handle);
     }
     else
@@ -784,7 +787,7 @@ zhashx_pack_own (zhashx_t *self, zhashx_serializer_fn serializer)
             //  We store key as short string
             frame_size += 1 + strlen ((char *) item->key);
             //  We store value as long string
-            if (serializer)
+            if (serializer != NULL)
                 values [vindex] = serializer (item->value);
             else
                 values [vindex] = (char *) item->value;
@@ -797,7 +800,7 @@ zhashx_pack_own (zhashx_t *self, zhashx_serializer_fn serializer)
     //  Now serialize items into the frame
     zframe_t *frame = zframe_new (NULL, frame_size);
     if (!frame) {
-        free (values);
+        freen (values);
         return NULL;
     }
 
@@ -823,13 +826,13 @@ zhashx_pack_own (zhashx_t *self, zhashx_serializer_fn serializer)
             item = item->next;
 
             //  Destroy serialized value
-            if (serializer)
+            if (serializer != NULL)
                 zstr_free (&values [vindex]);
 
             vindex++;
         }
     }
-    free (values);
+    freen (values);
     return frame;
 }
 
@@ -905,7 +908,7 @@ zhashx_unpack_own (zframe_t *frame, zhashx_deserializer_fn deserializer)
 
                     //  Convert string to real value
                     void *real_value;
-                    if (deserializer) {
+                    if (deserializer != NULL) {
                         real_value = deserializer (value);
                         zstr_free (&value);
                     }
@@ -1002,7 +1005,7 @@ zhashx_set_duplicator (zhashx_t *self, zhashx_duplicator_fn duplicator)
 
 
 //  --------------------------------------------------------------------------
-//  Set a user-defined deallocator for keyss; by default keys are
+//  Set a user-defined deallocator for keys; by default keys are
 //  freed when the hash is destroyed by calling free().
 
 void
@@ -1089,7 +1092,7 @@ zhashx_dup_v2 (zhashx_t *self)
 //
 
 #ifdef CZMQ_BUILD_DRAFT_API
-char *
+static char *
 s_test_serialize_int (const void *item)
 {
     int *int_item = (int *) item;
@@ -1098,7 +1101,7 @@ s_test_serialize_int (const void *item)
     return str_item;
 }
 
-void *
+static void *
 s_test_deserialze_int (const char *str_item)
 {
     int *int_item = (int *) zmalloc (sizeof (int));
@@ -1106,11 +1109,11 @@ s_test_deserialze_int (const char *str_item)
     return int_item;
 }
 
-void
+static void
 s_test_destroy_int (void **item)
 {
     int *int_item = (int *) *item;
-    free (int_item);
+    freen (int_item);
 }
 #endif // CZMQ_BUILD_DRAFT_API
 
@@ -1266,6 +1269,8 @@ zhashx_test (bool verbose)
     srandom ((unsigned) time (NULL));
     for (iteration = 0; iteration < 25000; iteration++) {
         testnbr = randof (testmax);
+        assert (testnbr != testmax);
+        assert (testnbr < testmax);
         if (testset [testnbr].exists) {
             item = (char *) zhashx_lookup (hash, testset [testnbr].name);
             assert (item);
@@ -1287,6 +1292,33 @@ zhashx_test (bool verbose)
     zhashx_destroy (&hash);
     assert (hash == NULL);
 
+    //  Test randof() limits - should be within (0..testmax)
+    //  and randomness distribution - should not have (many) zero-counts
+    //  If there are - maybe the ZSYS_RANDOF_MAX is too big for this platform
+    //  Note: This test can take a while on systems with weak floating point HW
+    testmax = 999;
+    size_t rndcnt[999];
+    assert ((sizeof (rndcnt)/sizeof(rndcnt[0])) == testmax);
+    memset (rndcnt, 0, sizeof (rndcnt));
+    for (iteration = 0; iteration < 10000000; iteration++) {
+        testnbr = randof (testmax);
+        assert (testnbr != testmax);
+        assert (testnbr < testmax);
+        assert (testnbr >= 0);
+        rndcnt[testnbr]++;
+    }
+    int rndmisses = 0;
+    for (iteration = 0; iteration < testmax; iteration++) {
+        if (rndcnt[iteration] == 0) {
+            zsys_warning("zhashx_test() : random distribution fault : got 0 hits for %d/%d",
+                iteration, testmax);
+            rndmisses++;
+        }
+    }
+    //  Too many misses are suspicious... we can lose half the entries
+    //  for each bit not used in the assumed ZSYS_RANDOF_MAX...
+    assert ( (rndmisses < (testmax / 3 )) );
+
     //  Test destructor; automatically copies and frees string values
     hash = zhashx_new ();
     assert (hash);
@@ -1302,6 +1334,35 @@ zhashx_test (bool verbose)
     assert (streq ((char *) zhashx_lookup (hash, "key1"), "This is a string"));
     assert (streq ((char *) zhashx_lookup (hash, "key2"), "Ring a ding ding"));
     zhashx_destroy (&hash);
+
+    //  Test purger and shrinker: no data should end up unreferenced in valgrind
+    hash = zhashx_new ();
+    assert (hash);
+    zhashx_set_destructor (hash, (zhashx_destructor_fn *) zstr_free);
+    zhashx_set_duplicator (hash, (zhashx_duplicator_fn *) strdup);
+    char valuep [255];
+    strcpy (valuep, "This is a string");
+    rc = zhashx_insert (hash, "key1", valuep);
+    assert (rc == 0);
+    strcpy (valuep, "Ring a ding ding");
+    rc = zhashx_insert (hash, "key2", valuep);
+    assert (rc == 0);
+    strcpy (valuep, "Cartahena delenda est");
+    rc = zhashx_insert (hash, "key3", valuep);
+    assert (rc == 0);
+    strcpy (valuep, "So say we all!");
+    rc = zhashx_insert (hash, "key4", valuep);
+    assert (rc == 0);
+    assert (streq ((char *) zhashx_lookup (hash, "key1"), "This is a string"));
+    assert (streq ((char *) zhashx_lookup (hash, "key2"), "Ring a ding ding"));
+    assert (streq ((char *) zhashx_lookup (hash, "key3"), "Cartahena delenda est"));
+    assert (streq ((char *) zhashx_lookup (hash, "key4"), "So say we all!"));
+    zhashx_purge (hash);
+    zhashx_destroy (&hash);
+
+#if defined (__WINDOWS__)
+    zsys_shutdown();
+#endif
     //  @end
 
     printf ("OK\n");

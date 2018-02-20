@@ -1,5 +1,5 @@
 /*  =========================================================================
-    zactor - actor 
+    zactor - actor
 
     Copyright (c) the Contributors as noted in the AUTHORS file.
     This file is part of CZMQ, the high-level C binding for 0MQ:
@@ -23,6 +23,8 @@ extern "C" {
 //  @interface
 //  This is a stable class, and may not change except for emergencies. It
 //  is provided in stable builds.
+//  This class has draft methods, which may change over time. They are not
+//  in stable releases, by default. Use --enable-drafts to enable.
 // Actors get a pipe and arguments from caller
 typedef void (zactor_fn) (
     zsock_t *pipe, void *args);
@@ -36,13 +38,13 @@ CZMQ_EXPORT void
     zactor_destroy (zactor_t **self_p);
 
 //  Send a zmsg message to the actor, take ownership of the message
-//  and destroy when it has been sent.                             
+//  and destroy when it has been sent.
 CZMQ_EXPORT int
     zactor_send (zactor_t *self, zmsg_t **msg_p);
 
-//  Receive a zmsg message from the actor. Returns NULL if the actor 
+//  Receive a zmsg message from the actor. Returns NULL if the actor
 //  was interrupted before the message could be received, or if there
-//  was a timeout on the actor.                                      
+//  was a timeout on the actor.
 //  Caller owns return value and must destroy it when done.
 CZMQ_EXPORT zmsg_t *
     zactor_recv (zactor_t *self);
@@ -52,13 +54,13 @@ CZMQ_EXPORT bool
     zactor_is (void *self);
 
 //  Probe the supplied reference. If it looks like a zactor_t instance,
-//  return the underlying libzmq actor handle; else if it looks like   
-//  a libzmq actor handle, return the supplied value.                  
+//  return the underlying libzmq actor handle; else if it looks like
+//  a libzmq actor handle, return the supplied value.
 CZMQ_EXPORT void *
     zactor_resolve (void *self);
 
 //  Return the actor's zsock handle. Use this when you absolutely need
-//  to work with the zsock instance rather than the actor.            
+//  to work with the zsock instance rather than the actor.
 CZMQ_EXPORT zsock_t *
     zactor_sock (zactor_t *self);
 
@@ -66,6 +68,22 @@ CZMQ_EXPORT zsock_t *
 CZMQ_EXPORT void
     zactor_test (bool verbose);
 
+#ifdef CZMQ_BUILD_DRAFT_API
+// Function to be called on zactor_destroy. Default behavior is to send zmsg_t with string "$TERM" in a first frame.
+//
+// An example - to send $KTHXBAI string
+//
+//     if (zstr_send (self->pipe, "$KTHXBAI") == 0)
+//         zsock_wait (self->pipe);
+typedef void (zactor_destructor_fn) (
+    zactor_t *self);
+
+//  *** Draft method, for development use, may change without warning ***
+//  Change default destructor by custom function. Actor MUST be able to handle new message instead of default $TERM.
+CZMQ_EXPORT void
+    zactor_set_destructor (zactor_t *self, zactor_destructor_fn destructor);
+
+#endif // CZMQ_BUILD_DRAFT_API
 //  @end
 
 
