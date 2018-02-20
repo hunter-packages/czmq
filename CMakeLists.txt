@@ -126,13 +126,6 @@ if(BUILD_SHARED_LIBS)
 else()
     set(LIBZMQ_HUNTER_TARGET "ZeroMQ::libzmq-static")
 endif()
-IF (zeromq_FOUND)
-    include_directories(${LIBZMQ_INCLUDE_DIRS})
-    list(APPEND MORE_LIBRARIES ${LIBZMQ_LIBRARIES})
-    set(pkg_config_libs_private "${pkg_config_libs_private} -lzmq")
-ELSE (zeromq_FOUND)
-    message( FATAL_ERROR "libzmq not found." )
-ENDIF (zeromq_FOUND)
 
 ########################################################################
 # UUID dependency
