@@ -122,9 +122,9 @@ set(OPTIONAL_LIBRARIES)
 hunter_add_package(zeromq)
 find_package(zeromq CONFIG REQUIRED)
 if(BUILD_SHARED_LIBS)
-    set(LIBZMQ_SHARED_TARGET "ZeroMQ::libzmq")
+    set(LIBZMQ_HUNTER_TARGET "ZeroMQ::libzmq")
 else()
-    set(LIBZMQ_STATIC_TARGET "ZeroMQ::libzmq-static")
+    set(LIBZMQ_HUNTER_TARGET "ZeroMQ::libzmq-static")
 endif()
 IF (zeromq_FOUND)
     include_directories(${LIBZMQ_INCLUDE_DIRS})
@@ -330,7 +330,7 @@ if (CZMQ_BUILD_SHARED)
 
   target_link_libraries(czmq
     ${MORE_LIBRARIES}
-    ${LIBZMQ_SHARED_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
   )
 
   install(TARGETS czmq
@@ -361,7 +361,7 @@ if (CZMQ_BUILD_STATIC)
 
   target_link_libraries(czmq-static
     ${MORE_LIBRARIES}
-    ${LIBZMQ_STATIC_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
   )
 
   install(TARGETS czmq-static
@@ -416,7 +416,7 @@ if (TARGET czmq)
 target_link_libraries(
     zmakecert
     czmq
-    ${LIBZMQ_SHARED_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -424,7 +424,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     zmakecert
     czmq-static
-    ${LIBZMQ_STATIC_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -439,7 +439,7 @@ if (TARGET czmq)
 target_link_libraries(
     zsp
     czmq
-    ${LIBZMQ_SHARED_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -447,7 +447,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     zsp
     czmq-static
-    ${LIBZMQ_STATIC_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -459,7 +459,7 @@ if (TARGET czmq)
 target_link_libraries(
     test_randof
     czmq
-    ${LIBZMQ_SHARED_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -467,7 +467,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     test_randof
     czmq-static
-    ${LIBZMQ_STATIC_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -479,7 +479,7 @@ if (TARGET czmq)
 target_link_libraries(
     czmq_selftest
     czmq
-    ${LIBZMQ_SHARED_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
@@ -487,7 +487,7 @@ if (NOT TARGET czmq AND TARGET czmq-static)
 target_link_libraries(
     czmq_selftest
     czmq-static
-    ${LIBZMQ_STATIC_TARGET}
+    ${LIBZMQ_HUNTER_TARGET}
     ${OPTIONAL_LIBRARIES}
 )
 endif()
